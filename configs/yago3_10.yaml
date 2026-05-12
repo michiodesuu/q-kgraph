@@ -1,0 +1,27 @@
+# configs/yago3_10.yaml — YAGO3-10 Settings  [V3]
+# YAGO3-10: 123,182 entities, 37 relations, ~1.08M train triples
+# Primary scalability test. Path cache: 2-6 hours.
+defaults:
+  - base
+
+embed_dim: 256
+max_hops: 2              # K=2 required for tractable path cache
+max_paths: 8
+epochs: 200
+batch_size: 1024
+num_negatives: 256       # larger negative set for 1M+ triples
+lr: 0.001
+
+num_entities: 123182
+num_relations: 37
+
+# Path cache WARNING: 2-6 hours. Run overnight before training.
+# Estimated size: ~200-400MB
+cache_file: "data/cache/yago3_hops2_paths8.pkl"
+
+# REQUIRED: 123k entities = ~480MB score matrix per batch without chunking
+chunk_size: "auto"
+eval_batch_size: 64      # smaller batch for memory management
+
+log_every_n_epochs: 20
+run_name: "yago3_run"

@@ -1,0 +1,12 @@
+# configs/ablation.yaml — Ablation study settings  [V2]
+defaults:
+  - toy
+
+# Override for ablation experiments
+epochs: 100
+ablation_modes: ["full", "no_phase", "no_paths", "classical"]
+noise_levels: [0.0, 0.05, 0.10, 0.15, 0.20]
+noise_type: "random"
+
+results_csv: "outputs/results/ablation_results.csv"
+run_name: "ablation"

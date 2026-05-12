@@ -1,0 +1,62 @@
+# configs/base.yaml — Shared defaults for all experiments  [V1]
+# All other configs override specific values from this base.
+
+defaults:
+  - _self_
+
+# Reproducibility
+seed: 42
+deterministic: true
+
+# Compute
+device: "auto"          # auto = cuda if available, else mps, else cpu
+
+# Model architecture
+embed_dim: 64           # total dim; complex_dim = embed_dim // 2
+unitary_type: "diagonal"  # diagonal | givens | matrix_exp | relational | contextual
+max_hops: 2             # BFS depth for path enumeration
+max_paths: 8            # max paths per (head, tail) pair
+dropout: 0.0            # entity state dropout
+
+# Training — V1 (standard single-LR)
+epochs: 200
+batch_size: 1024
+num_negatives: 128
+loss_type: "bce"        # bce | margin | self_adversarial
+lr: 0.001
+weight_decay: 1.0e-5
+grad_clip: 1.0
+label_smoothing: 0.9
+warmup_epochs: 10
+
+# Training — V2 (parameter groups, only used by trainer_v2.py)
+lr_base: 0.001
+lr_imag_mult: 3.0       # lr_imag = lr_base * lr_imag_mult. 3x fights Phase Collapse
+lr_phase_mult: 2.0      # lr_phase = lr_base * lr_phase_mult
+use_interference_loss: false    # set true for V2 experiments
+contrast_weight: 0.5
+phase_weight: 0.1
+reg_encoder_weight: 0.01
+interference_check_every: 10
+
+# Evaluation
+eval_batch_size: 256
+filter_false_negatives: true    # ALWAYS true for published comparison
+hits_k: [1, 3, 10]
+chunk_size: "auto"              # for ChunkedEvaluator on large datasets
+
+# Noise experiments (ablation study)
+noise_levels: [0.0, 0.05, 0.10, 0.15, 0.20]
+noise_type: "random"    # random | targeted | path_break
+
+# Logging
+log_every_n_epochs: 10
+use_wandb: false
+run_name: "run"
+
+# Paths
+checkpoint_dir: "outputs/checkpoints"
+results_dir: "outputs/results"
+figures_dir: "outputs/figures"
+cache_dir: "data/cache"
+raw_data_dir: "data/raw"

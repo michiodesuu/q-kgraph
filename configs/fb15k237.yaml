@@ -1,0 +1,29 @@
+# configs/fb15k237.yaml — FB15k-237 benchmark settings  [V1]
+defaults:
+  - base
+
+embed_dim: 256
+max_hops: 2
+max_paths: 8
+epochs: 200
+batch_size: 1024
+num_negatives: 128
+lr: 0.001
+
+# V2 settings for full benchmark
+lr_base: 0.001
+lr_imag_mult: 3.0
+lr_phase_mult: 2.0
+
+# fb15k237 specifics
+num_entities: 14541
+num_relations: 237
+
+# Path cache (build BEFORE training, ~15-30 min)
+cache_file: "data/cache/fb15k237_hops2_paths8.pkl"
+
+# Evaluation: standard evaluator is fine for 14k entities
+chunk_size: 5000        # safe default; "auto" also works
+
+log_every_n_epochs: 10
+run_name: "fb15k237_run"

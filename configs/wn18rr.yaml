@@ -1,0 +1,25 @@
+# configs/wn18rr.yaml — WN18RR benchmark settings  [V1]
+defaults:
+  - base
+
+embed_dim: 256
+max_hops: 2
+max_paths: 8
+epochs: 200
+batch_size: 1024
+num_negatives: 128
+lr: 0.0003
+
+# wn18rr specifics
+num_entities: 40943
+num_relations: 11
+
+# Path cache (build BEFORE training, ~20-45 min)
+cache_file: "data/cache/wn18rr_hops2_paths8.pkl"
+
+# REQUIRED: ChunkedEvaluator to avoid OOM on 40k entities
+# chunk_size="auto" reads available VRAM and selects optimally
+chunk_size: "auto"
+
+log_every_n_epochs: 10
+run_name: "wn18rr_run"

@@ -1,0 +1,30 @@
+# configs/hardware.yaml — Real Quantum Hardware Settings  [V3]
+defaults:
+  - toy
+
+# IBM Quantum settings
+ibm_backend: "ibm_nairobi"   # free tier (5-7 qubits)
+ibm_token: ""                # set via env: IBM_QUANTUM_TOKEN
+
+# AWS Braket settings
+braket_device: "local:pennylane/lightning.gpu"
+braket_s3_bucket: ""
+
+# Hardware demo settings
+complex_dim_hardware: 4      # 2 qubits per entity (IBM free tier)
+shots: 4096                  # circuit executions per SWAP test
+use_zne: true                # Zero-Noise Extrapolation
+
+# ZNE noise scale factors
+zne_scale_factors: [1.0, 2.0, 3.0]
+
+# Subspace projection
+projection_method: "pca"     # pca | random
+target_complex_dim: 4        # project from embed_dim/2 to this
+
+# Validation targets
+agreement_ratio_min: 0.85    # hardware/classical ratio must be in [0.85, 1.15]
+agreement_ratio_max: 1.15
+sign_preservation_rate: 0.667  # at least 2/3 queries must preserve interference sign
+
+run_name: "hardware_demo"

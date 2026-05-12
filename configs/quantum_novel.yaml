@@ -1,0 +1,170 @@
+# configs/quantum_novel.yaml — Novel Quantum Model Settings  [V3-Novel]
+#
+# Extends fb15k237.yaml with all novel components:
+#   - Quantum teleportation-based scoring (BellStateRelation + TeleportationScorer)
+#   - Decoherence-aware path aggregation (DecoherenceChannel + DecoherencePathAggregator)
+#   - Content-dependent path weights (DifferentiableBellMeasurement attention)
+#   - Multi-scale interference (1-hop + 2-hop combined before Born rule)
+#   - Ranking-aware loss (ListNet over interference scores)
+#   - Entanglement entropy regularization
+#   - Contextuality loss (non-classical composition enforcement)
+#   - Structural unitary constraints (symmetric/inverse relation enforcement)
+#   - TransE pre-initialization of entity phase components
+#
+# USAGE:
+#   python experiments/run_fb15k237.py --config configs/quantum_novel.yaml
+#   or override specific fields:
+#   python experiments/run_fb15k237.py --config configs/quantum_novel.yaml model.embed_dim=128
+#
+# ABLATION VARIANTS (override model_variant):
+#   model_variant: "novel_teleport_only"    — only teleportation, no decoherence
+#   model_variant: "novel_decohere_only"    — only decoherence, no teleportation
+#   model_variant: "novel_no_contextuality" — all novel except contextuality loss
+#   model_variant: "full_novel"             — all components (default)
+
+defaults:
+  - fb15k237
+
+# ── Model variant ──────────────────────────────────────────────────────────────
+model_variant: "full_novel"   # full_novel | novel_teleport_only | novel_decohere_only | base
+
+# ── Core architecture (override fb15k237 defaults) ────────────────────────────
+embed_dim: 256          # unchanged from fb15k237
+unitary_type: "diagonal"   # base unitary; structural constraints applied on top
+max_hops: 2
+max_paths: 16           # increased from 8 — more paths for richer interference
+
+# ── Quantum Teleportation ──────────────────────────────────────────────────────
+use_teleportation: true
+teleportation_weight: 0.5       # blend: score = (1-w)*unitary_score + w*teleport_score
+                                # 0.0 = pure unitary (baseline), 1.0 = pure teleportation
+n_corrections: 16               # number of Weyl correction operators (min(d², 16))
+bell_hidden_dim: 64             # hidden dim for DifferentiableBellMeasurement MLP
+bell_init_scale: 0.1            # init std for BellStateRelation matrices
+teleport_blend_warmup: 20       # epochs before teleportation_weight is fully applied
+                                # (linear ramp from 0 → teleportation_weight)
+
+# ── Decoherence ────────────────────────────────────────────────────────────────
+use_decoherence: true
+decoherence_aggregator: true    # replace AmplitudeAggregator with DecoherencePathAggregator
+learnable_decoherence_rates: true   # learn per-relation ε ∈ (0,1)
+decoherence_rate_init: 0.3      # initial ε for all relations
+decoherence_rate_final: 0.01   # target ε after full annealing
+decoherence_anneal_epochs: 100  # epochs over which to anneal from init to final
+decoherence_anneal_schedule: "exponential"  # exponential | linear
+
+# ── Content-Dependent Path Weights ────────────────────────────────────────────
+use_content_weights: true       # replaces fixed αᵢ with MLP-computed weights
+content_weight_hidden_dim: 64   # MLP hidden dimension for αᵢ(h, r, path_type)
+path_type_embed_dim: 32         # embedding dim for path relation-sequence type
+
+# ── Multi-Scale Interference ──────────────────────────────────────────────────
+use_multi_scale: true           # combine 1-hop and 2-hop amplitudes before Born rule
+multi_scale_init_alpha1: 0.7    # initial weight for 1-hop component
+multi_scale_init_alpha2: 0.3    # initial weight for 2-hop component
+
+# ── Structural Unitary Constraints ────────────────────────────────────────────
+enforce_structural_constraints: true   # enforce symmetry/inverse from Phase 2 analysis
+symmetric_phase_constraint: true       # symmetric relations: phases ∈ {0, π}
+inverse_pair_sharing: true             # inverse pairs share parameters: U_r' = conj(U_r)†
+structural_constraint_weight: 0.1      # soft constraint loss weight (0 = hard constraint)
+
+# ── TransE Pre-Initialization ─────────────────────────────────────────────────
+use_transe_init: true
+transe_checkpoint: "outputs/checkpoints/fb15k237_transe/best.pt"
+transe_init_imag_scale: 0.3     # scale factor for mapping TransE → imaginary components
+                                # (TransE vectors are large; scale down for stable init)
+transe_init_real_noise: 0.01    # small noise added to real components after init
+
+# ── Training Mode ─────────────────────────────────────────────────────────────
+train_on_interference: true     # use score_with_paths as primary training signal
+                                # (fixes mismatch: train on 1-hop, eval on multi-hop)
+interference_train_fraction: 0.3  # fraction of batches using interference score
+                                  # (0.3 = 30% interference, 70% fast 1-hop BCE)
+teleportation_train_fraction: 0.2  # fraction of batches using teleportation scorer
+
+# ── Novel Loss Weights ────────────────────────────────────────────────────────
+# Ranking-Aware Loss
+use_ranking_loss: true
+ranking_loss_weight: 0.3        # λ_rank in combined loss
+ranking_temperature: 1.0        # softmax temperature (lower = sharper ranking)
+ranking_label_smoothing: 0.1
+
+# Teleportation Contrastive Loss
+use_teleport_contrast: true
+teleport_contrast_weight: 0.5   # λ_teleport
+teleport_contrast_margin: 0.1
+teleport_entropy_penalty: 0.05  # entropy penalty on outcome distribution for correct pairs
+
+# Entanglement Entropy Regularizer
+use_entropy_reg: true
+entropy_reg_weight: 0.01        # λ_entropy (soft — don't over-constrain)
+
+# Contextuality Loss
+use_contextuality_loss: true
+contextuality_weight: 0.1       # λ_context
+contextuality_margin: 0.05      # minimum gap |joint - factorized| to enforce
+
+# Decoherence Loss
+use_decoherence_loss: true
+decoherence_loss_weight: 0.05   # λ_decohere
+decoherence_max_direct_rate: 0.1    # max acceptable ε for short paths
+decoherence_diversity_weight: 0.01  # encourage diverse rates across relations
+decoherence_low_rate_weight: 0.1    # penalty for high rates
+
+# Existing interference losses (inherited from V2, kept active)
+use_interference_loss: true
+phase_weight: 0.1
+contrast_weight: 0.5
+reg_encoder_weight: 0.01
+reg_unitary_weight: 0.01
+
+# ── Optimizer / Learning Rates ────────────────────────────────────────────────
+lr_base: 0.0003           # reduced from 0.001 — novel model is more complex
+lr_imag_mult: 3.0
+lr_phase_mult: 2.0
+lr_bell_state_mult: 0.5   # Bell state matrices: lower LR (preserve unit norm)
+lr_decoherence_mult: 0.1  # Decoherence rates: very low LR (stable annealing)
+lr_content_weight_mult: 1.0   # Content weight MLP: standard LR
+lr_correction_mult: 0.3   # Correction operators: low LR (near-unitary)
+
+weight_decay: 1.0e-5
+grad_clip: 0.5            # tighter than V1 (0.5 vs 1.0) for complex gradient stability
+
+# ── Training Schedule ─────────────────────────────────────────────────────────
+epochs: 300               # more epochs — novel model converges slower
+warmup_epochs: 30         # longer warmup for Bell states and decoherence to stabilize
+batch_size: 512           # reduced from 1024 — teleportation scoring is memory-intensive
+num_negatives: 128
+
+# ── Evaluation ────────────────────────────────────────────────────────────────
+eval_use_teleportation: true   # use teleportation scoring during evaluation
+eval_use_decoherence: true     # use decoherence-aware aggregation during evaluation
+chunk_size: 2000               # reduced from 5000 — teleportation (B, E) is larger
+patience: 30                   # early stopping patience (epochs without val MRR improvement)
+
+# ── Diagnostics & Logging ──────────────────────────────────────────────────────
+log_every_n_epochs: 5
+log_entanglement_entropy: true     # print per-relation entropy table every N epochs
+log_decoherence_rates: true        # print per-relation ε values
+log_contextuality_score: true      # print non-classicality gap statistics
+log_teleportation_fidelity: true   # print teleportation outcome distribution diagnostics
+interference_check_every: 10       # epochs between InterferenceMonitor checks
+
+# ── Checkpointing ─────────────────────────────────────────────────────────────
+run_name: "fb15k237_quantum_novel"
+checkpoint_dir: "outputs/checkpoints/fb15k237_quantum_novel"
+
+# ── Ablation Flags (set to false to isolate components) ───────────────────────
+ablation_flags:
+  teleportation: true
+  decoherence: true
+  content_weights: true
+  multi_scale: true
+  structural_constraints: true
+  transe_init: true
+  ranking_loss: true
+  teleport_contrast: true
+  entropy_reg: true
+  contextuality: true
+  decoherence_loss: true

@@ -1,0 +1,22 @@
+# configs/codex_m.yaml — CoDEx-M Settings  [V3]
+# CoDEx-M: 17,050 entities, 51 relations, ~185k train triples
+# Cleaner and harder than FB15k-237. Preferred by newer reviewers.
+defaults:
+  - base
+
+embed_dim: 256
+max_hops: 2
+max_paths: 8
+epochs: 200
+batch_size: 1024
+num_negatives: 128
+lr: 0.001
+
+num_entities: 17050
+num_relations: 51
+
+cache_file: "data/cache/codex_m_hops2_paths8.pkl"
+chunk_size: 5000         # 17k entities: optional but safe
+
+log_every_n_epochs: 10
+run_name: "codex_m_run"

@@ -1,0 +1,23 @@
+# configs/toy.yaml — Toy KG experiment settings  [V1]
+defaults:
+  - base
+
+# Override for toy KG (28 entities, 12 relations, 67 triples)
+embed_dim: 16           # small for toy
+max_hops: 2
+max_paths: 8
+epochs: 100
+batch_size: 8           # small dataset
+num_negatives: 4
+lr: 0.005
+
+# V2 settings for toy
+lr_base: 0.005
+lr_imag_mult: 3.0
+lr_phase_mult: 2.0
+use_interference_loss: true   # needed to fix 27% problem
+contrast_weight: 1.0          # high: 7 wrong paths vs 4 correct
+interference_check_every: 10
+
+log_every_n_epochs: 10
+run_name: "toy_run"

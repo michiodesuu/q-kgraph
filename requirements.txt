@@ -1,0 +1,41 @@
+# Core ML
+torch>=2.1.0
+torchvision>=0.16.0
+einops>=0.7.0
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Knowledge Graph
+ogb>=1.3.6
+
+# Quantum computing (optional — for V3 hardware integration)
+pennylane>=0.35.0
+pennylane-qiskit>=0.35.0
+qiskit>=1.0.0
+qiskit-ibm-runtime>=0.20.0
+
+# Training utilities
+wandb>=0.16.0
+optuna>=3.4.0
+hydra-core>=1.3.0
+omegaconf>=2.3.0
+
+# Terminal and logging
+rich>=13.0.0
+tqdm>=4.66.0
+
+# Plotting
+matplotlib>=3.7.0
+seaborn>=0.13.0
+
+# NLP for LLM initialization
+sentence-transformers>=2.2.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Utilities
+pandas>=2.0.0
+scikit-learn>=1.3.0
+requests>=2.31.0

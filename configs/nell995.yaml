@@ -1,0 +1,26 @@
+# configs/nell995.yaml — NELL-995 Settings  [V3]
+# NELL-995: 75,492 entities, 200 relations, ~150k train triples
+# Designed for multi-hop path reasoning evaluation.
+# Directly validates PathAggregator and BFS approach.
+defaults:
+  - base
+
+embed_dim: 256
+max_hops: 3              # NELL-995 specifically designed for 3-hop reasoning
+max_paths: 8
+epochs: 200
+batch_size: 1024
+num_negatives: 128
+lr: 0.001
+
+num_entities: 75492
+num_relations: 200
+
+# Path cache: ~45 min at K=3, max_paths=8
+cache_file: "data/cache/nell995_hops3_paths8.pkl"
+
+# REQUIRED: 75k entities exceed GPU memory for full score matrix
+chunk_size: "auto"
+
+log_every_n_epochs: 10
+run_name: "nell995_run"
