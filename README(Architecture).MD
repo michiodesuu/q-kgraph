@@ -1,11 +1,17 @@
 # The Complete Guide to `quantum_kg`
-## A Mentor-Style, Deep Technical Explanation — V1 through V6
+## A Mentor-Style, Deep Technical Explanation — V1 through V7
 
 > **For:** Research interns working on this codebase  
-> **Goal:** Full, intuitive understanding — from the first line of `toy_kg.py` to the V6 novel teleportation + decoherence model  
+> **Goal:** Full, intuitive understanding — from the first line of `toy_kg.py` to the V7 extended baseline suite  
 > **Style:** Senior engineer mentoring a junior — analogies first, math second, code third
 
-> **Current version: V6** — adds quantum teleportation scoring, decoherence-aware path aggregation,
+> **Current version: V7** — adds four new baselines: RASCAL (`rascal.py`), ConvE (`conve.py`),
+> TuckER (`tucker.py`), and GTransE (`gtranse.py`). Total baselines: 9.
+> GTransE (Kertkeidkachorn et al.) is the only uncertain-KG baseline, evaluated on NELL-995
+> with confidence-scaled margins — the most direct comparison for V5 NELL experiments.
+> See **PART 11** for full interference-failure analysis of each baseline.
+>
+> **Previous: V6** — adds quantum teleportation scoring, decoherence-aware path aggregation,
 > and non-classical contextuality loss. See **PART 9** for full details.
 
 ---
@@ -31,7 +37,7 @@ Before reading a single line of code, you need to understand how every file rela
 
 ```
 ═══════════════════════════════════════════════════════════════════
-                    quantum_kg SYSTEM ARCHITECTURE (V1–V6)
+                    quantum_kg SYSTEM ARCHITECTURE (V1–V7)
 ═══════════════════════════════════════════════════════════════════
 
   ┌─────────────────────────────────────────────────────────────┐
@@ -105,7 +111,8 @@ Before reading a single line of code, you need to understand how every file rela
   │  models/quaternion_reasoner.py         [V4]                 │
   │  → "The V4 assembled model"                                 │
   │                                                             │
-  │  models/baselines/ (transe, rotate, complex_e, nbfnet, ...) │
+  │  models/baselines/ (transe, rotate, complex_e, nbfnet, ...  │
+  │                     rascal, conve, tucker, gtranse) ← V7   │
   └──────────────────────────┬──────────────────────────────────┘
                              │ model gets trained by
                              ▼
@@ -1949,6 +1956,132 @@ Why worse on noisy data: NBFNet ADDS all evidence, including noise — cannot ca
 REQUIRED for A* submission. Must call set_graph() before scoring.
 ```
 
+### RASCAL — `models/baselines/rascal.py`  [V7 NEW]
+```
+Math: score = h^T M_r t   (full d×d bilinear matrix M_r per relation)
+Params: O(|R|·d²) — most expressive shallow model
+Subsumes: TransE (diagonal symmetric M_r) and ComplEx (real part of Hermitian M_r)
+
+WHY RASCAL IS IMPORTANT:
+    A reviewer might argue: "TransE/RotatE are too simple. A more expressive
+    model would close the gap." RASCAL is the counter-evidence.
+    Full bilinear matrices give MAXIMUM per-relation expressiveness, yet:
+    - Score is still a single real scalar per triple
+    - No path enumeration — no K paths to sum over
+    - No complex amplitude — no phase angles to drive apart
+    Classical addition of RASCAL scores across paths still sums positively.
+    RASCAL proves: expressiveness per triple ≠ interference across paths.
+
+Published FB15k-237: MRR ≈ 0.356, H@10 ≈ 0.530
+```
+
+### ConvE — `models/baselines/conve.py`  [V7 NEW]
+```
+Math: score = σ( vec(f([ē_h; r̄_r] * ω)) W ) · e_t
+      [ē_h; r̄_r]: embeddings reshaped to 2D images, stacked
+      * ω: 2D convolution (32 filters, 3×3 kernel)
+      f: ReLU + BatchNorm
+      W: linear projection (flat_size → embed_dim)
+
+WHY ConvE CANNOT PRODUCE INTERFERENCE:
+    Convolution: captures SPATIAL patterns within a single (h,r) image.
+    ReLU: ensures all feature map values are ≥ 0.
+    Linear W: projects to embedding space (real-valued).
+    Dot product with t: a real scalar.
+    Result: score ∈ (0,1) via sigmoid. Always positive. No cross-terms possible.
+
+    ConvE's cross-dimensional interactions are WITHIN a single triple —
+    they are not cross-PATH interactions. Multiple-path aggregation would
+    require separate forward passes and classical addition of the results.
+    That addition is still monotone: adding scores only increases the total.
+
+Published FB15k-237: MRR ≈ 0.325, H@10 ≈ 0.501
+```
+
+### TuckER — `models/baselines/tucker.py`  [V7 NEW]
+```
+Math: score = σ( W ×₁ h ×₂ r · t )
+      W ∈ ℝ^{d_e × d_r × d_e}: shared core tensor
+      ×₁, ×₂: mode-1 and mode-2 products (einsum contractions)
+      Efficient: W ×₁ h → (d_r, d_e) matrix; ×₂ r → d_e vector; · t → scalar
+
+WHY TuckER IS THE KEY SHALLOW BASELINE:
+    TuckER is the STRONGEST factorized shallow model. It generalises:
+        DistMult:  W = diagonal cube, d_r = d_e
+        ComplEx:   W = complex-valued diagonal cube
+        RASCAL:    W = unconstrained matrix, d_r = 1 (one M_r slice per r)
+    Despite this generality, TuckER still scores ONE triple at a time.
+    Its "three-way interaction" is between h_i, r_j, t_k for fixed i,j,k — not
+    between PATHS with phase angles summed before squaring.
+
+    The only way to get the quantum cross-term 2Re(A₁Ā₂) is:
+        1. Have K ≥ 2 complex path amplitudes
+        2. Sum them BEFORE applying the Born rule |·|²
+        3. The cross-terms exist in the expansion of |A₁ + A₂|²
+    TuckER has K=0 paths, no complex parts, and no pre-squaring sum.
+    TuckER proves: tensor factorization ≠ quantum interference.
+
+Published FB15k-237: MRR ≈ 0.358, H@10 ≈ 0.544  ← best shallow baseline
+```
+
+### GTransE — `models/baselines/gtranse.py`  [V7 NEW]
+```
+Paper: Kertkeidkachorn, Liu, Ichise (AIST/NII Tokyo)
+       "GTransE: Generalizing Translation-based Model on
+        Uncertain Knowledge Graph Embedding"
+
+IMPORTANT: GTransE does NOT change the scoring function.
+           score(h,r,t) = -||h + r - t||₁   ← identical to TransE
+
+GTransE introduces a NEW LOSS FUNCTION for uncertain KGs:
+
+    L = Σ_{(h,r,t,s) ∈ Q}  Σ_{(h',r,t') ∈ Q'}  max(0, f_pos - f_neg + s^α · M)
+
+Where:
+    s ∈ [0,1]  confidence score of the positive quadruple
+    α          hyperparameter controlling confidence influence
+    M          global margin constant (e.g., M=9.0)
+
+    s^α · M = effective (per-triple) margin
+        High confidence s≈1: s^α·M ≈ M  → push hard, this triple is reliable
+        Low confidence  s≈0: s^α·M ≈ 0  → barely push, this triple may be noise
+
+SPECIAL CASES:
+    α=0: s^0=1 → standard TransE margin loss (confidence ignored)
+    α=2: best on NELL-995 dataset (Table 2 in paper)
+    α=3: best on synthetic uncertain FB15k-237 (Table 1 in paper)
+
+WHY GTransE IS A CRITICAL BASELINE FOR THIS PROJECT:
+    This project's V5 uses NELL-995 with per-triple confidence scores.
+    GTransE was SPECIFICALLY designed for and evaluated on NELL-995.
+    GTransE is the ONLY baseline that also handles uncertainty.
+
+    But GTransE handles uncertainty via CONFIDENCE MARGIN SCALING.
+    QuantumReasoner handles uncertainty via DESTRUCTIVE INTERFERENCE.
+    These are fundamentally different mechanisms:
+
+    GTransE: reduces gradient from uncertain triples
+             Effect: less damage from noise during TRAINING
+             Cannot make wrong-path score negative — it only down-weights training signal
+
+    QuantumReasoner: drives wrong paths to opposite phase
+             Effect: NEGATIVE contribution from wrong paths at INFERENCE
+             The cross-term 2Re(AᵢĀⱼ) is NEGATIVE when φᵢⱼ ∈ (π/2, 3π/2)
+             GTransE cannot produce negative cross-terms regardless of α.
+
+EXPERIMENTAL PREDICTION:
+    At ρ=1.0 (fully uncertain FB15k-237), GTransE α=3 should outperform TransE.
+    On NELL-995, GTransE α=2 is the strongest existing baseline.
+    QuantumReasoner should exceed GTransE on NELL-995 — if it does, this is the
+    strongest evidence that quantum interference beats confidence weighting.
+
+Published NELL-995:
+    GTransE α=2: H@1=12.08%, H@10=31.22%, MR=0.19
+    GTransE α=3: H@1=12.20%, H@10=31.49%, MR=0.19
+    GTransE α=4: H@1=12.21%, H@10=31.81%, MR=0.19  ← best on NELL
+    vs TransE(s≥0.9): H@1=10.44%, H@10=30.15%, MR=0.18
+```
+
 ---
 
 # PART 12: THE MENTAL MODEL — "5-MINUTE EXPLANATION"
@@ -2061,32 +2194,31 @@ Add:
 
 ## VERSION COMPARISON TABLE — At a Glance
 
-| Feature | V1 | V2 | V3 | V4 | V5 | **V6** |
-|---------|----|----|----|----|-----|--------|
-| Entity space | ℂ^d | ℂ^d | ℂ^d | **H^d (quaternion)** | ℂ^d | ℂ^d |
-| Relation operator | Diagonal | Relational Decomposed | Same V2 | **Hamilton Product** | **MatrixExp (full U(d))** | **BellStateRelation M_r ∈ ℂ^(d×d)** |
-| Operator constraint | Unitary | Unitary | Unitary | Quaternion norm | Unitary (full U(d)) | **None — unconstrained** |
-| LR groups | 1 | **5, imag 3×** | Same V2 | **7 groups** | **6 groups** | **9 groups (+ bell 0.5×, decohe 0.1×, corr 0.3×)** |
-| Scoring | 1-hop Born | Same | Same | Hamilton product | Same V2 | **Teleportation: \|Σₖ√q_k⟨t\|C_k†M_r\|h⟩\|²** |
-| Measurement | None | None | None | None | None | **DifferentiableBellMeasurement (MLP attention q_k)** |
-| Path state model | Pure state | Pure state | Pure state | Pure state | Pure state | **Density matrix ρ_k (decoherence)** |
-| Loss function | BCE | **+ PhaseSep + Contrast** | Same V2 | **+ Lattice + Interf + Router** | **+ PolarityLoss** | **+ ListNet + Contextuality + EntEntropy + Decohere** |
-| Ranking loss | None | None | None | None | None | **ListNet (direct MRR optimization)** |
-| Non-classicality | None | None | None | None | Formally impossible Phase Collapse | **ContextualityLoss: joint ≠ factorized** |
-| Train/eval mismatch | Yes | Yes | Yes | Yes | Yes | **Fixed: interference_train_fraction=0.3** |
-| Global consistency | None | None | None | **Logic Lattice** | None | None |
-| Dynamic routing | None | None | None | **Classical/Quantum** | None | None |
-| Phase Collapse | Occurs | **Mitigated** | Same V2 | Health check | **Formally impossible** | Same V5 |
-| Decoherence model | None | None | None | None | None | **Learnable ε_r per relation** |
-| TransE pre-init | None | None | None | None | None | **Optional (use_transe_init=true)** |
-| Modern baselines | 3 | Same | **+NBFNet/RED-GNN** | Same V3 | Same V3 | Same V3 |
-| Theorems | None | **Theorem 8.3** | Same V2 | Same V2 | **+ Lemma V5.1, V5.2, V5.3** | Same V5 |
-| Hardware | None | None | **SWAP+ZNE** | Same V3 | Same V3 | Same V3 |
-| Real noise | Synthetic | Synthetic | Synthetic | Synthetic | **NELL-995** | Same V5 |
-| Interpretability | None | None | None | PathEntropy | **KS-test** | **+ outcome weights + ε table + contextuality gap** |
-| Expected MRR@20% | 0.14 | 0.24 | 0.28 | 0.34 [TARGET] | 0.36 [TARGET] | **≥ 0.38 [TARGET]** |
+| Feature | V1 | V2 | V3 | V4 | V5 | V6 | **V7** |
+|---------|----|----|----|----|-----|----|----|
+| Entity space | ℂ^d | ℂ^d | ℂ^d | **H^d (quaternion)** | ℂ^d | ℂ^d | Same V6 |
+| Relation operator | Diagonal | Relational Decomposed | Same V2 | **Hamilton Product** | **MatrixExp (full U(d))** | **BellStateRelation M_r ∈ ℂ^(d×d)** | Same V6 |
+| Operator constraint | Unitary | Unitary | Unitary | Quaternion norm | Unitary (full U(d)) | **None — unconstrained** | Same V6 |
+| LR groups | 1 | **5, imag 3×** | Same V2 | **7 groups** | **6 groups** | **9 groups** | Same V6 |
+| Scoring | 1-hop Born | Same | Same | Hamilton product | Same V2 | **Teleportation: \|Σₖ√q_k⟨t\|C_k†M_r\|h⟩\|²** | Same V6 |
+| Measurement | None | None | None | None | None | **DifferentiableBellMeasurement** | Same V6 |
+| Path state model | Pure state | Pure state | Pure state | Pure state | Pure state | **Density matrix ρ_k** | Same V6 |
+| Loss function | BCE | **+ PhaseSep + Contrast** | Same V2 | **+ Lattice + Interf + Router** | **+ PolarityLoss** | **+ ListNet + Contextuality + EntEntropy + Decohere** | Same V6 |
+| Ranking loss | None | None | None | None | None | **ListNet** | Same V6 |
+| Non-classicality | None | None | None | None | Formally impossible Phase Collapse | **ContextualityLoss** | Same V6 |
+| Train/eval mismatch | Yes | Yes | Yes | Yes | Yes | **Fixed** | Same V6 |
+| Global consistency | None | None | None | **Logic Lattice** | None | None | Same |
+| Dynamic routing | None | None | None | **Classical/Quantum** | None | None | Same |
+| Phase Collapse | Occurs | **Mitigated** | Same V2 | Health check | **Formally impossible** | Same V5 | Same V5 |
+| Decoherence model | None | None | None | None | None | **Learnable ε_r** | Same V6 |
+| Modern baselines | 3 | Same | **+NBFNet/RED-GNN (5)** | Same V3 | Same V3 | Same V3 | **+RASCAL/ConvE/TuckER/GTransE (9)** |
+| Theorems | None | **Theorem 8.3** | Same V2 | Same V2 | **+ Lemma V5.1, V5.2, V5.3** | Same V5 | Same V5 |
+| Hardware | None | None | **SWAP+ZNE** | Same V3 | Same V3 | Same V3 | Same V3 |
+| Real noise | Synthetic | Synthetic | Synthetic | Synthetic | **NELL-995** | Same V5 | Same V5 |
+| Interpretability | None | None | None | PathEntropy | **KS-test** | **+ outcome weights + ε table** | Same V6 |
+| Expected MRR@20% | 0.14 | 0.24 | 0.28 | 0.34 [TARGET] | 0.36 [TARGET] | **≥ 0.38 [TARGET]** | Same V6 |
 
-*80 Python files + 1 YAML, ~30,200 lines across V1–V6.*
+*84 Python files + 1 YAML, ~30,900 lines across V1–V7 (4 new baseline files in V7).*
 
 ---
 
@@ -2120,6 +2252,10 @@ Add:
 - TransE FB15k-237: MRR = 0.4159, Hits@1 = 0.3144, Hits@10 = 0.5962 ← MEASURED
 - RotatE FB15k-237: in progress (epoch ~253/500 as of 2026-05-06) ← RUNNING
 - ComplEx FB15k-237: evaluation bug (MRR=1.0, impossible) ← BUG
+- RASCAL FB15k-237: not yet started ← V7 NEW (published target MRR ≈ 0.356)
+- ConvE  FB15k-237: not yet started ← V7 NEW (published target MRR ≈ 0.325)
+- TuckER FB15k-237: not yet started ← V7 NEW (published target MRR ≈ 0.358)
+- GTransE NELL-995: not yet started ← V7 NEW (α=2–4; published H@10 ≈ 31–32%)
 - QuantumReasoner V5 FB15k-237: MRR ≈ 0.271 ← MEASURED (training mismatch confirmed root cause)
 - QuantumReasoner V6: not yet started ← PENDING (requires existing-file wiring)
 

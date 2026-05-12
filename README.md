@@ -3,7 +3,14 @@
 **Resolving Knowledge Graph Contradictions using Quantum Superposition, Unitary Evolution, and Born Rule Probability**
 > Target venues: EMNLP Findings / KR 2025 → NeurIPS/ICLR next cycle
 
-> **Current version: V6 — Novel Quantum Teleportation + Decoherence**
+> **Current version: V7 — Extended Baselines (RASCAL, ConvE, TuckER, GTransE)**
+> New in V7: Four new baselines added to `models/baselines/`: RASCAL (`rascal.py`),
+> ConvE (`conve.py`), TuckER (`tucker.py`), and GTransE (`gtranse.py`).
+> GTransE (Kertkeidkachorn et al.) is the only uncertain-KG baseline — it uses
+> confidence scores to scale the margin loss: `L = Σ[f_pos−f_neg+s^α·M]+`.
+> This is the most directly comparable baseline for the V5 NELL-995 experiments.
+>
+> **Previous: V6 — Novel Quantum Teleportation + Decoherence**
 > New in V6: BellStateRelation scoring (`quantum_teleportation.py`), decoherence-aware
 > path aggregation (`decoherence.py`), ranking-aware ListNet loss + contextuality enforcement
 > (`novel_loss.py`), and full hyperparameter config (`configs/quantum_novel.yaml`).
@@ -422,6 +429,37 @@ V4 QuaternionReasoner: MRR@0% ≈ 0.37, MRR@10% ≈ 0.37, MRR@20% ≈ 0.34 [TARG
 V5 + MatrixExp + Polarity: MRR@0% ≈ 0.38, MRR@10% ≈ 0.39, MRR@20% ≈ 0.36 [TARGET]
 ```
 
+### V7 — "Extended Classical Baselines: RASCAL + ConvE + TuckER"
+
+V7 adds three new classical baselines to `models/baselines/`, each with a detailed
+explanation of why it cannot produce interference. Together with the existing five
+baselines (TransE, RotatE, ComplEx, NBFNet, RED-GNN), they form a comprehensive
+comparison suite covering: real additive, complex rotational, full bilinear, convolutional,
+and tensor factorization models — none of which can produce negative cross-terms.
+
+| Baseline | Paper | Score / Loss | Cannot Interfere Because... |
+|---|---|---|---|
+| **RASCAL** | Nickel et al. ICML 2011 | `h^T M_r t` | Real scalar; no path enumeration |
+| **ConvE** | Dettmers et al. AAAI 2018 | `σ(vec(f([ē_h; r̄_r]*ω)) W)·t` | ReLU+sigmoid; non-negative pipeline |
+| **TuckER** | Balazevic et al. EMNLP 2019 | `σ(W ×₁ h ×₂ r · t)` | Factorized; no multi-hop amplitude sum |
+| **GTransE** | Kertkeidkachorn et al. | `loss = Σ[f_pos−f_neg+s^α·M]+` | Same TransE score; only loss changes — cannot cancel paths |
+
+**V7 Published Target Numbers (FB15k-237)**:
+```
+RASCAL:  MRR ≈ 0.356, H@1 ≈ 0.264, H@10 ≈ 0.530  ← bilinear (O(|R|d²) params)
+ConvE:   MRR ≈ 0.325, H@1 ≈ 0.237, H@10 ≈ 0.501  ← convolutional
+TuckER:  MRR ≈ 0.358, H@1 ≈ 0.266, H@10 ≈ 0.544  ← best shallow model
+```
+
+**Run V7 Baselines**:
+```bash
+python experiments/run_fb15k237.py --model rascal --config configs/fb15k237.yaml
+python experiments/run_fb15k237.py --model conve  --config configs/fb15k237.yaml
+python experiments/run_fb15k237.py --model tucker --config configs/fb15k237.yaml
+```
+
+---
+
 ### V6 — "Non-Classical Reasoning: Teleportation + Decoherence + Contextuality"
 
 V6 introduces four novel quantum mechanisms not present in any prior KGE work:
@@ -580,7 +618,21 @@ quantum_kg/
 │       ├── rotate.py            [V1] RotatE. Complex but no path sum. No interference.
 │       ├── complex_e.py         [V1] ComplEx. Re(amp) not |amp|². No interference.
 │       ├── nbfnet.py            [V3] NBFNet. Modern GNN. REQUIRED for A* submission.
-│       └── red_gnn.py           [V3] RED-GNN. Sparse relational GNN. Second modern baseline.
+│       ├── red_gnn.py           [V3] RED-GNN. Sparse relational GNN. Second modern baseline.
+│       ├── rascal.py            [V7] ★ NEW. RASCAL. Full d×d bilinear matrix per relation.
+│       │                              score = h^T M_r t. Most expressive shallow model.
+│       │                              O(|R|d²) params. Subsumes TransE and ComplEx.
+│       ├── conve.py             [V7] ★ NEW. ConvE (Dettmers et al., AAAI 2018).
+│       │                              2D convolution over reshaped [h; r] image.
+│       │                              Non-linear, cross-dimensional patterns. Real output.
+│       ├── tucker.py            [V7] ★ NEW. TuckER (Balazevic et al., EMNLP 2019).
+│       │                              Tucker tensor: W ×₁ h ×₂ r · t. Best shallow model.
+│       │                              Generalises RASCAL, ComplEx, DistMult. d_r ≤ d_e.
+│       └── gtranse.py          [V7] ★ NEW. GTransE (Kertkeidkachorn et al.).
+│                                      TransE scoring + confidence-scaled margin loss.
+│                                      L = Σ [f_pos − f_neg + s^α·M]+. α=2–3 best.
+│                                      KEY: only uncertain-KG baseline. Uses NELL confidence.
+│                                      confidence_margin_loss(pos, neg, conf, alpha=3)
 │
 ├── training/
 │   ├── losses.py                [V1] BCE/MarginRanking/SelfAdversarial.
@@ -2136,16 +2188,31 @@ The synthetic fallback (200 entities, 2000 triples) is suitable for testing the
 
 ## 13. Current Benchmark Status
 
-As of 2026-05-06 (FB15k-237 experiments running):
+As of 2026-05-13 (FB15k-237 experiments running; V7 baselines added):
 
 | Model | Status | MRR | Hits@1 | Hits@10 | Notes |
 |---|---|---|---|---|---|
 | **TransE** | ✓ DONE | 0.4159 | 0.3144 | 0.5962 | Epoch 500/500 complete |
 | **RotatE** | In progress | — | — | — | Epoch ~253/500, still training |
 | **ComplEx** | Bug | 1.0 (invalid) | — | — | Evaluation bug: MRR=1.0 impossible on FB15k-237 |
+| **RASCAL** | ★ Not yet started | — | — | — | V7 new. Published target: MRR ≈ 0.356, H@10 ≈ 0.530 |
+| **ConvE** | ★ Not yet started | — | — | — | V7 new. Published target: MRR ≈ 0.325, H@10 ≈ 0.501 |
+| **TuckER** | ★ Not yet started | — | — | — | V7 new. Published target: MRR ≈ 0.358, H@10 ≈ 0.544 |
+| **GTransE (α=3)** | ★ Not yet started | — | — | — | V7 new. NELL target: H@1=12.20%, H@10=31.49% |
 | **QuantumReasoner V5** | Done (issue) | ~0.271 | — | — | Training mismatch: trains 1-hop, evaluates multi-hop |
 | **QuantumReasoner V6** | Not yet started | — | — | — | Awaiting existing-file modifications + re-run |
 | **WN18RR (QR V5)** | Not started | — | — | — | Scheduled after FB15k-237 completes |
+
+### V7 Baseline Published Reference Numbers
+
+| Model | Dataset | MRR / MR | Hits@1 | Hits@10 | Key mechanic |
+|---|---|---|---|---|---|
+| **RASCAL** | FB15k-237 | 0.356 | 0.264 | 0.530 | full bilinear h^T M_r t |
+| **ConvE** | FB15k-237 | 0.325 | 0.237 | 0.501 | 2D convolution, ReLU |
+| **TuckER** | FB15k-237 | 0.358 | 0.266 | 0.544 | Tucker tensor W ×₁ h ×₂ r |
+| **GTransE α=3** | NELL-995 | MR=0.19 | 12.20% | 31.49% | confidence margin s^α·M |
+| **GTransE α=4** | NELL-995 | MR=0.19 | 12.21% | 31.81% | confidence margin s^α·M |
+| **QuantumReasoner** | FB15k-237 | target ≥ 0.35 | — | — | Born rule interference |
 
 ### Known Issues
 
@@ -2214,6 +2281,42 @@ once `run_fb15k237.py` is updated to wire them in.
   author    = {Trouillon, Théo and Welbl, Johannes and Riedel, Sebastian
                and Gaussier, Éric and Bouchard, Guillaume},
   booktitle = {ICML}, year = {2016}
+}
+
+@inproceedings{nickel2011rescal,
+  title     = {A Three-Way Model for Collective Learning on Multi-Relational Data},
+  author    = {Nickel, Maximilian and Tresp, Volker and Kriegel, Hans-Peter},
+  booktitle = {ICML}, year = {2011},
+  note      = {Source of RASCAL: full bilinear matrix M_r per relation.
+               score(h,r,t) = h^T M_r t. Most expressive shallow KGE model.}
+}
+
+@inproceedings{dettmers2018conve,
+  title     = {Convolutional 2D Knowledge Graph Embeddings},
+  author    = {Dettmers, Tim and Minervini, Pasquale and Stenetorp, Pontus
+               and Riedel, Sebastian},
+  booktitle = {AAAI}, year = {2018},
+  note      = {Source of ConvE: 2D convolution over reshaped [h; r] image.
+               Non-linear interaction patterns; cannot produce amplitude interference.}
+}
+
+@inproceedings{balazevic2019tucker,
+  title     = {TuckER: Tensor Factorization for Knowledge Graph Completion},
+  author    = {Balazevic, Ivana and Allen, Carl and Hospedales, Timothy},
+  booktitle = {EMNLP}, year = {2019},
+  note      = {Source of TuckER: W ×₁ h ×₂ r · t Tucker decomposition scoring.
+               Best shallow factorization model; generalises DistMult, ComplEx, RASCAL.}
+}
+
+@inproceedings{kertkeidkachorn2019gtranse,
+  title     = {GTransE: Generalizing Translation-based Model on Uncertain Knowledge
+               Graph Embedding},
+  author    = {Kertkeidkachorn, Natthawut and Liu, Xin and Ichise, Ryutaro},
+  booktitle = {Workshop proceedings (AIST / NII)}, year = {2019},
+  note      = {Source of GTransE: confidence-scaled margin loss L=Σ[f_pos−f_neg+s^α·M]+.
+               TransE scoring unchanged; confidence s ∈ [0,1] per quadruple.
+               α=2–3 best on NELL-995. KEY: only uncertain-KG baseline in this paper.
+               Most directly comparable to V5 NELL-995 experiments.}
 }
 
 @article{zhang2023qiqe,
