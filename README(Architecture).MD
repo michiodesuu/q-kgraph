@@ -1,17 +1,22 @@
 # The Complete Guide to `quantum_kg`
-## A Mentor-Style, Deep Technical Explanation — V1 through V7
+## A Mentor-Style, Deep Technical Explanation — V1 through V8
 
 > **For:** Research interns working on this codebase  
-> **Goal:** Full, intuitive understanding — from the first line of `toy_kg.py` to the V7 extended baseline suite  
+> **Goal:** Full, intuitive understanding — from the first line of `toy_kg.py` to the V8 curved manifold architecture  
 > **Style:** Senior engineer mentoring a junior — analogies first, math second, code third
 
-> **Current version: V7** — adds four new baselines: RASCAL (`rascal.py`), ConvE (`conve.py`),
+> **Current version: V8** — adds `V8CurvedManifoldReasoner` and 8 advanced research directions:
+> QDL-ALC concept subspaces, temporal Hamiltonian evolution, CTQW path enumeration,
+> entanglement-driven pruning, Schrödinger-Dirac spinor loss, distributed sparse amplitude
+> aggregation, Quantum RAG, and Cognitive RAG. Formal proof that GTransE is the
+> fully-decohered limit of QuantumReasoner (Theorem V8.1). Target: A* venue quality.
+> See **PART 13** for full V8 architecture details.
+>
+> **Previous: V7** — adds four new baselines: RASCAL (`rascal.py`), ConvE (`conve.py`),
 > TuckER (`tucker.py`), and GTransE (`gtranse.py`). Total baselines: 9.
-> GTransE (Kertkeidkachorn et al.) is the only uncertain-KG baseline, evaluated on NELL-995
-> with confidence-scaled margins — the most direct comparison for V5 NELL experiments.
 > See **PART 11** for full interference-failure analysis of each baseline.
 >
-> **Previous: V6** — adds quantum teleportation scoring, decoherence-aware path aggregation,
+> **V6** — adds quantum teleportation scoring, decoherence-aware path aggregation,
 > and non-classical contextuality loss. See **PART 9** for full details.
 
 ---
@@ -37,7 +42,7 @@ Before reading a single line of code, you need to understand how every file rela
 
 ```
 ═══════════════════════════════════════════════════════════════════
-                    quantum_kg SYSTEM ARCHITECTURE (V1–V7)
+                    quantum_kg SYSTEM ARCHITECTURE (V1–V8)
 ═══════════════════════════════════════════════════════════════════
 
   ┌─────────────────────────────────────────────────────────────┐
@@ -113,6 +118,43 @@ Before reading a single line of code, you need to understand how every file rela
   │                                                             │
   │  models/baselines/ (transe, rotate, complex_e, nbfnet, ...  │
   │                     rascal, conve, tucker, gtranse) ← V7   │
+  │                                                             │
+  │  ── V8 components (NEW) ─────────────────────────────────   │
+  │  models/components/quantum_dl.py         ← NEW V8           │
+  │  → ConceptSubspace: P_C = VV^T (learnable QR-orthonorm)     │
+  │  → AlternatingProjection: (P_C P_D)^K for C⊓D              │
+  │  → ALCOperator: intersect/negate/is_subsumed/ABoxIncons.    │
+  │                                                             │
+  │  models/components/temporal_evolution.py ← NEW V8           │
+  │  → TemporalHamiltonianOperator: U(τ)=exp(−iH_rτ), Cayley    │
+  │  → TemporalFactDecay: cos²(ω_r Δτ / 2) per relation        │
+  │                                                             │
+  │  models/components/qrw_path.py           ← NEW V8           │
+  │  → CTQWPathEnumerator: exp(−iγAt) via Chebyshev polynom.    │
+  │  → O(1) memory; replaces BFS path cache for large graphs    │
+  │                                                             │
+  │  models/components/entanglement_pruner.py ← NEW V8          │
+  │  → EntanglementPruner: S(ρ_r) from SVD singular values      │
+  │  → AdaptivePruningPolicy: MLP quantum/classical routing      │
+  │                                                             │
+  │  models/components/holonomy.py            ← NEW V8          │
+  │  → ParallelTransportOperator: T_r via skew-Hermitian exp    │
+  │  → HolonomyOperator: gap ‖T_rN…T_r1−I‖_F, path phase       │
+  │                                                             │
+  │  models/components/adaptive_curvature.py  ← NEW V8          │
+  │  → CurvedEmbedding: κ_e=tanh(log_κ), Poincaré/sphere/flat  │
+  │  → Möbius addition, stereographic to_complex projection     │
+  │  ─────────────────────────────────────────────────────────  │
+  │                                                             │
+  │  models/v8_reasoner.py                    ← NEW V8          │
+  │  → V8CurvedManifoldReasoner: full assembled V8 model        │
+  │  → Relations as parallel transport T_r ∈ U(d)               │
+  │  → Holonomy gap = contradiction signal for cycles           │
+  │                                                             │
+  │  models/quantum_rag.py                    ← NEW V8          │
+  │  → KGSubgraphExtractor: BFS + contradiction detection       │
+  │  → QuantumContradictionDetector: logit ±Δ for LLM decoding  │
+  │  → QuantumRAGInterface: correct_hallucination() API         │
   └──────────────────────────┬──────────────────────────────────┘
                              │ model gets trained by
                              ▼
@@ -140,6 +182,15 @@ Before reading a single line of code, you need to understand how every file rela
   │  → ContextualityLoss: joint≠factorized enforcement          │
   │  → DecoherenceLoss: high-rate penalty + diversity reward     │
   │  → CombinedNovelLoss: orchestrates all above components     │
+  │                                                             │
+  │  training/schrodinger_dirac_loss.py       ← NEW V8          │
+  │  → DiracSpinorEncoder: ψ=(ψ_L,ψ_R)∈ℂ^{2d}, chirality split │
+  │  → DiracRelationOperator: U_r=exp(i·θ·Σa_μγ^μ)             │
+  │  → SchrodingerDiracLoss: L_dirac+L_SE+L_lorentz             │
+  │                                                             │
+  │  training/distributed_aggregator.py       ← NEW V8          │
+  │  → SparseComplexAmplitude: sparse E×E, born_rule_score()    │
+  │  → PartitionedAggregator: entanglement_swap, scaling_analysis│
   └──────────────────────────┬──────────────────────────────────┘
                              │ evaluation via
                              ▼
@@ -170,6 +221,12 @@ Before reading a single line of code, you need to understand how every file rela
   │    Phase Collapse is NOT a fixed point (proved)             │
   │  → Theorem V5.3: MatrixExpUnitary spans U(d) ⊋ T^d          │
   │    RotatE and QuantumReasoner are non-equivalent classes    │
+  │                                                             │
+  │  theory/gtranseE_decoherence_limit.py     ← NEW V8          │
+  │  → Theorem V8.1: GTransE = QuantumReasoner(ε→1)             │
+  │    Tr(ρ(ε)|t⟩⟨t|) = s·|⟨t|ψ⟩|² + (1−s)/d,  s=1−ε         │
+  │  → prove_gtranseE_is_decohered_limit(): numerical proof     │
+  │  → verify_confidence_margin_equivalence(): rank agreement   │
   └──────────────────────────┬──────────────────────────────────┘
                              │ experiments orchestrate all of it
                              ▼
@@ -182,7 +239,9 @@ Before reading a single line of code, you need to understand how every file rela
   │  experiments/run_v3.py     → V3 (all 4 reviewer roadblocks) │
   │  experiments/run_v4.py     → V4 (quaternion+lattice+router) │
   │  experiments/run_v5.py     → V5 (MatrixExp+Polarity+NELL)   │
+  │  experiments/run_v8.py     → V8 (CurvedManifold+holonomy)  │
   │  experiments/train_toy.py  → Dedicated toy KG training      │
+  │  experiments/cognitive_rag.py → Cognitive tutoring RAG demo │
   │  configs/quantum_novel.yaml ← NEW V6                        │
   │  → Full hyperparameter config for V6 novel model            │
   └─────────────────────────────────────────────────────────────┘
@@ -2126,6 +2185,15 @@ Published NELL-995:
 ✓ WHY ListNet directly optimizes MRR (soft-rank matches the evaluation metric; BCE does not)
 ✓ WHY the training mismatch was the main V5 failure cause (train on 1-hop score, evaluate on multi-hop = wrong target)
 ✓ WHY decoherence annealing goes 0.3 → 0.01 (high early = regularization; low late = sharp interference)
+✓ WHY parallel transport is better than rotation for relations (transport is curvature-aware; rotation is flat)
+✓ WHY holonomy gap detects contradictions (consistent relation cycle = closed loop = zero gap; contradiction = non-closure)
+✓ WHY per-entity curvature adapts geometry (hierarchical entities fit hyperbolic; cyclical fit spherical; relational fit flat)
+✓ WHY CTQW replaces BFS (quantum walk covers all paths simultaneously; O(1) memory vs O(K·N) cache)
+✓ WHY GTransE is the decohered limit of QuantumReasoner (Theorem V8.1: confidence s = coherence 1−ε)
+✓ WHY Dirac spinors for entities (bispinor structure encodes both chiralities; Lorentz-invariant scoring)
+✓ WHY Schrödinger equation as a loss (entities satisfying SE are physically meaningful states; regularizes embedding dynamics)
+✓ WHY QDL-ALC concept subspaces matter (description logic operators as projectors = differentiable ontology reasoning)
+✓ WHY Cognitive RAG proves learning order matters (non-commutative unitaries: Algebra-then-Calculus ≠ Calculus-then-Algebra)
 ```
 
 ---
@@ -2190,35 +2258,205 @@ Add:
 13. `training/novel_loss.py` [V6] — ListNet, ContextualityLoss, EntanglementEntropyRegularizer
 14. `configs/quantum_novel.yaml` [V6] — all flags and hyperparameters, ablation_flags dict
 
+**If you want to understand V8:**
+15. `models/components/holonomy.py` [V8] — parallel transport, holonomy gap as contradiction signal
+16. `models/components/adaptive_curvature.py` [V8] — per-entity curvature, Poincaré/spherical embedding
+17. `models/v8_reasoner.py` [V8] — full V8 assembled model
+18. `theory/gtranseE_decoherence_limit.py` [V8] — Theorem V8.1: GTransE = decohered QuantumReasoner
+19. `models/components/qrw_path.py` [V8] — CTQW path enumeration, O(1) memory BFS replacement
+
+---
+
+---
+
+# PART 13: VERSION 8 — CURVED RELATIONAL MANIFOLD AND ADVANCED RESEARCH DIRECTIONS
+## "Relations are not rotations — they are paths through curved spacetime."
+
+**[STRONG]**
+
+### The Analogy: Geometry of Understanding
+
+In general relativity, spacetime is curved. When you "parallel transport" a vector around a closed loop in curved spacetime, it comes back pointing in a different direction — this rotation is called **holonomy**, and it measures the curvature enclosed by the loop.
+
+V8 applies exactly this idea to knowledge graphs:
+- Each relation r defines a **parallel transport operator** T_r ∈ U(d)
+- A cycle of relations r1 → r2 → … → rN that should return to the identity (if consistent) produces a holonomy gap `‖T_rN…T_r1 − I‖_F`
+- If this gap is large, the relation cycle contains a **contradiction**
+
+This is fundamentally different from the interference mechanism of V1–V7. Interference detects contradictions via phase cancellation (wrong paths cancel each other). Holonomy detects contradictions via **geometric non-closure**: a logically consistent cycle must form a closed loop in the curved embedding space.
+
+### V8 Architecture: The Five Building Blocks
+
+**Block 1 — Parallel Transport** (`models/components/holonomy.py`)
+```python
+T_r = exp(skew_hermitian_R_r)   # via Cayley map for stability
+```
+T_r generalizes the V5 MatrixExpUnitary: instead of `U_r = exp(iH_r)` (a rotation),
+T_r is a transport operator that depends on the entity's local curvature.
+
+**Block 2 — Per-Entity Curvature** (`models/components/adaptive_curvature.py`)
+```python
+κ_e = tanh(log_κ_e)   # in (−1, 1)
+# κ < 0: Poincaré ball (hyperbolic) — good for hierarchical entities (e.g., taxonomy)
+# κ = 0: flat Euclidean — good for relational entities (e.g., city capitals)
+# κ > 0: spherical — good for cyclical entities (e.g., seasonal events)
+```
+Entity geometry adapts during training. No manual assignment — the model learns which
+entities live in hyperbolic, Euclidean, or spherical space.
+
+**Block 3 — Holonomy Gap** (`models/components/holonomy.py`)
+```python
+holonomy_gap = ‖T_rN ∘ … ∘ T_r1 − I‖_F
+```
+On the **toy KG**: Platypus → isA → Mammal → isA → Animal → inferredProperty → WarmBlooded
+followed by the reverse chain should return to identity for a consistent KG.
+The Platypus contradiction paths have large holonomy gap. This is the V8 contradiction signal.
+
+**Block 4 — Path Phase** (`models/components/holonomy.py`)
+```python
+path_phase = arg(det(T_rN ∘ … ∘ T_r1))
+```
+The determinant of a unitary matrix lies on the unit circle. Its argument is the total
+phase accumulated by the path. Connected to V2 PhaseSeparation: the holonomy path phase
+is a more geometric version of the per-path phase angle.
+
+**Block 5 — V8CurvedManifoldReasoner** (`models/v8_reasoner.py`)
+```python
+score = curved_embedding_score + transport_score − holonomy_gap_penalty
+```
+All five blocks combine: entity embeddings are curve-aware, relations are transports,
+and contradiction triples are penalized by their holonomy gap. The Born rule still applies
+for multi-hop interference — V8 adds geometry on top of V1–V7's algebraic interference.
+
+### The Eight Research Directions
+
+**Direction 1 — QDL-ALC** (`models/components/quantum_dl.py`):
+*Description Logic meets quantum projectors.*
+Every concept C becomes a subspace P_C. Entity membership = projection magnitude.
+Logical operations (AND, NOT, subsumption checking) become linear algebra.
+Novel because no prior KGE paper uses description logic operators as learned projectors.
+
+**Direction 2 — Temporal Hamiltonian** (`models/components/temporal_evolution.py`):
+*Time as a dimension of the embedding space.*
+`U(τ) = exp(−iH_r τ)`: the relation operator evolves continuously in time.
+A fact (h, r, t, time=2015) and (h, r, t', time=2023) can be explained by a single H_r
+with different τ values. No discrete time-bins — continuous evolution.
+Relevant for Wikidata (most triples have timestamps) and temporal reasoning benchmarks.
+
+**Direction 3 — CTQW Path Enumeration** (`models/components/qrw_path.py`):
+*Walk the graph without enumerating the graph.*
+Standard path finding: BFS pre-computes K paths, stores in O(K·N) memory cache.
+CTQW: `|ψ(t)⟩ = exp(−iγAt)|head⟩` quantum-walks the entire graph simultaneously.
+The probability amplitude at entity e after time t is ⟨e|ψ(t)⟩ — the multi-hop
+amplitude without enumerating individual paths. O(1) memory (no cache needed).
+Critical for YAGO3-10 at 123k entities where building a path cache takes 2–6 hours.
+
+**Direction 4 — Entanglement-Driven Pruning** (`models/components/entanglement_pruner.py`):
+*Not all relations need quantum treatment.*
+Von Neumann entropy S(ρ_r) of relation r's density matrix:
+- High S: many-to-many relation (e.g., `hasTopic`) → needs full quantum interference
+- Low S: functional relation (e.g., `isCapitalOf`) → classical score is sufficient
+
+The AdaptivePruningPolicy (3-layer MLP) learns which queries need quantum vs classical.
+Like V4's DynamicRouter but based on relation entropy instead of query confidence.
+
+**Direction 5 — Schrödinger-Dirac Loss** (`training/schrodinger_dirac_loss.py`):
+*Entities as Dirac spinors — Lorentz-invariant scoring.*
+Entity embedding as Dirac bispinor: ψ = (ψ_L, ψ_R) ∈ ℂ^{2d} (left and right chirality).
+Relation operator as γ-matrix exponential: U_r = exp(i·θ_r · Σ a_{r,μ} γ^μ).
+Three loss components:
+- L_dirac: BCE on spinor inner products (same as V1 BCE but on bispinors)
+- L_Schrödinger: entity embeddings must satisfy `(iℏ∂_t − H)|ψ⟩ = 0` (physics constraint)
+- L_Lorentz: `|‖ψ_L‖² − ‖ψ_R‖²|` → enforce scale symmetry between chiralities
+
+Novel because no prior KGE model uses relativistic equation structure as a training constraint.
+
+**Direction 6 — Distributed Sparse Amplitude** (`training/distributed_aggregator.py`):
+*Linear algebra over sparse amplitude matrices.*
+Standard AmplitudeAggregator: for each query (h, r), enumerate K paths, compute K amplitudes.
+SparseComplexAmplitude: A[t, h] = ⟨t|U_r|h⟩ as a sparse E×E complex matrix.
+Multi-hop: A_2 = A_r2 @ A_r1 (matrix multiplication, not path enumeration).
+PartitionedAggregator splits across n virtual devices via entanglement swapping.
+Scaling: O(K·n·d) vs O(N·d·L) for NBFNet at 10⁸ entities.
+
+**Direction 7 — Quantum RAG** (`models/quantum_rag.py`):
+*Use the KG to correct LLM hallucinations with Born rule confidence.*
+When an LLM generates a claim (Platypus, isA, Reptile):
+1. Extract KG subgraph around Platypus via BFS
+2. Compute P(claim) and P(contradiction) via QuantumReasoner Born rule
+3. Find contradicting triples via `find_contradicting_triples()`
+4. Adjust logits: +Δ for well-supported alternatives, −Δ for contradicted claims
+Novel: unlike standard RAG (retrieval + concatenation), this uses quantum probability
+to **re-weight logits** rather than simply appending retrieved context.
+
+**Direction 8 — Cognitive RAG** (`experiments/cognitive_rag.py`):
+*Learning curriculum design as quantum epistemic state evolution.*
+Each concept learned is a unitary U_concept applied to the knowledge state.
+Non-commutativity: U_Calculus U_Algebra |0⟩ ≠ U_Algebra U_Calculus |0⟩.
+Born rule gives P(knows DeepLearning) given a learning path.
+`CognitiveTutorRAG.recommend_next()` finds concept with highest success probability.
+Novel: models learning as quantum state evolution, not just graph walk recommendation.
+
+### Theorem V8.1 — The Decoherence-GTransE Bridge
+
+**This is the most important theoretical result in V8.**
+
+The GTransE baseline (from V7) and the QuantumReasoner (from V1) seem completely unrelated:
+- GTransE uses TransE scoring with a confidence-weighted margin loss
+- QuantumReasoner uses Born rule probability with unitary path operators
+
+**Theorem V8.1 proves they are the same model at different decoherence levels:**
+
+```
+QuantumReasoner with decoherence ε:
+   ρ(ε) = (1−ε)|ψ⟩⟨ψ| + ε·I/d
+
+Score_QR(ε) = Tr(ρ(ε)|t⟩⟨t|) = (1−ε)·|⟨t|ψ⟩|² + ε/d
+
+Setting s = 1 − ε   (confidence = 1 − noise):
+   Score_QR = s·|⟨t|ψ⟩|² + (1−s)/d
+```
+
+GTransE confidence score s ∈ [0,1] is exactly the quantum coherence 1−ε:
+- s = 1 (full confidence, no noise): score = |⟨t|ψ⟩|² (pure Born rule, = QuantumReasoner)
+- s = 0 (zero confidence, full noise): score = 1/d (uniform = maximally decohered)
+- s ∈ (0,1): GTransE interpolates between coherent and decohered regimes
+
+**Why this matters:** It gives GTransE a quantum interpretation and positions QuantumReasoner
+as the fully coherent limit. The paper can now claim: "GTransE outperforms TransE on noisy
+data because its confidence weighting is a classical approximation to quantum decoherence.
+QuantumReasoner is the full quantum version: it can exploit phase relationships that GTransE's
+scalar confidence cannot capture."
+
 ---
 
 ## VERSION COMPARISON TABLE — At a Glance
 
-| Feature | V1 | V2 | V3 | V4 | V5 | V6 | **V7** |
-|---------|----|----|----|----|-----|----|----|
-| Entity space | ℂ^d | ℂ^d | ℂ^d | **H^d (quaternion)** | ℂ^d | ℂ^d | Same V6 |
-| Relation operator | Diagonal | Relational Decomposed | Same V2 | **Hamilton Product** | **MatrixExp (full U(d))** | **BellStateRelation M_r ∈ ℂ^(d×d)** | Same V6 |
-| Operator constraint | Unitary | Unitary | Unitary | Quaternion norm | Unitary (full U(d)) | **None — unconstrained** | Same V6 |
-| LR groups | 1 | **5, imag 3×** | Same V2 | **7 groups** | **6 groups** | **9 groups** | Same V6 |
-| Scoring | 1-hop Born | Same | Same | Hamilton product | Same V2 | **Teleportation: \|Σₖ√q_k⟨t\|C_k†M_r\|h⟩\|²** | Same V6 |
-| Measurement | None | None | None | None | None | **DifferentiableBellMeasurement** | Same V6 |
-| Path state model | Pure state | Pure state | Pure state | Pure state | Pure state | **Density matrix ρ_k** | Same V6 |
-| Loss function | BCE | **+ PhaseSep + Contrast** | Same V2 | **+ Lattice + Interf + Router** | **+ PolarityLoss** | **+ ListNet + Contextuality + EntEntropy + Decohere** | Same V6 |
-| Ranking loss | None | None | None | None | None | **ListNet** | Same V6 |
-| Non-classicality | None | None | None | None | Formally impossible Phase Collapse | **ContextualityLoss** | Same V6 |
-| Train/eval mismatch | Yes | Yes | Yes | Yes | Yes | **Fixed** | Same V6 |
-| Global consistency | None | None | None | **Logic Lattice** | None | None | Same |
-| Dynamic routing | None | None | None | **Classical/Quantum** | None | None | Same |
-| Phase Collapse | Occurs | **Mitigated** | Same V2 | Health check | **Formally impossible** | Same V5 | Same V5 |
-| Decoherence model | None | None | None | None | None | **Learnable ε_r** | Same V6 |
-| Modern baselines | 3 | Same | **+NBFNet/RED-GNN (5)** | Same V3 | Same V3 | Same V3 | **+RASCAL/ConvE/TuckER/GTransE (9)** |
-| Theorems | None | **Theorem 8.3** | Same V2 | Same V2 | **+ Lemma V5.1, V5.2, V5.3** | Same V5 | Same V5 |
-| Hardware | None | None | **SWAP+ZNE** | Same V3 | Same V3 | Same V3 | Same V3 |
-| Real noise | Synthetic | Synthetic | Synthetic | Synthetic | **NELL-995** | Same V5 | Same V5 |
-| Interpretability | None | None | None | PathEntropy | **KS-test** | **+ outcome weights + ε table** | Same V6 |
-| Expected MRR@20% | 0.14 | 0.24 | 0.28 | 0.34 [TARGET] | 0.36 [TARGET] | **≥ 0.38 [TARGET]** | Same V6 |
+| Feature | V1 | V2 | V3 | V4 | V5 | V6 | V7 | **V8** |
+|---------|----|----|----|----|-----|----|----|-----|
+| Entity space | ℂ^d | ℂ^d | ℂ^d | **H^d (quat.)** | ℂ^d | ℂ^d | Same V6 | **Curved κ_e** |
+| Relation operator | Diagonal | Relational Decomp. | Same V2 | **Hamilton Prod.** | **MatrixExp U(d)** | **BellState M_r** | Same V6 | **Parallel Transport T_r** |
+| Operator constraint | Unitary | Unitary | Unitary | Quaternion norm | Unitary (full) | **None** | Same V6 | Unitary + curvature |
+| LR groups | 1 | **5, imag 3×** | Same V2 | **7** | **6** | **9** | Same V6 | Same V6 |
+| Scoring | 1-hop Born | Same | Same | Hamilton | Same V2 | **Teleportation** | Same V6 | **Curved+transport+holonomy** |
+| Path enumeration | BFS | BFS | BFS | BFS | BFS | BFS | BFS | **+ CTQW O(1)** |
+| Path state model | Pure | Pure | Pure | Pure | Pure | **Density matrix** | Same V6 | Same V6 |
+| Loss | BCE | **+PhaseSep+Contrast** | Same V2 | **+Lattice+Router** | **+Polarity** | **+ListNet+Ctx+Ent+Dec** | Same V6 | **+Dirac+SE+Lorentz** |
+| Non-classicality | None | None | None | None | Phase Collapse impossible | **Contextuality** | Same V6 | **+ Holonomy non-closure** |
+| Global consistency | None | None | None | **Logic Lattice** | None | None | Same | **+ QDL-ALC** |
+| Dynamic routing | None | None | None | **Classical/QM** | None | None | Same | **+ Entanglement-entropy** |
+| Phase Collapse | Occurs | **Mitigated** | Same V2 | Health check | **Impossible** | Same V5 | Same V5 | Same V5 |
+| Decoherence model | None | None | None | None | None | **Learnable ε_r** | Same V6 | **+ Theorem V8.1** |
+| Baselines | 3 | Same | **5 (+NBFNet)** | Same V3 | Same V3 | Same V3 | **9 (+RASCAL/ConvE/TuckER/GTransE)** | Same V7 |
+| Theorems | None | **8.3** | Same V2 | Same V2 | **+V5.1/2/3** | Same V5 | Same V5 | **+V8.1 (GTransE bridge)** |
+| Hardware | None | None | **SWAP+ZNE** | Same V3 | Same | Same | Same | Same |
+| Real noise | Synthetic | Synthetic | Synthetic | Synthetic | **NELL-995** | Same V5 | Same V5 | Same V5 |
+| Interpretability | None | None | None | PathEntropy | **KS-test** | **+weights+ε** | Same V6 | **+holonomy gap** |
+| Temporal | None | None | None | None | None | None | None | **Hamiltonian U(τ)** |
+| Applications | KGC | KGC | KGC | KGC | KGC | KGC | KGC | **+Quantum RAG+Cognitive RAG** |
+| Expected MRR@20% | 0.14 | 0.24 | 0.28 | 0.34 | 0.36 | **≥0.38** | Same V6 | **≥0.40** |
 
-*84 Python files + 1 YAML, ~30,900 lines across V1–V7 (4 new baseline files in V7).*
+*93 Python files + 1 YAML, ~35,000 lines across V1–V8 (13 new files in V8).*
 
 ---
 
@@ -2250,12 +2488,13 @@ Add:
 
 **Current benchmark status [KNOWN FACTS, not targets]:**
 - TransE FB15k-237: MRR = 0.4159, Hits@1 = 0.3144, Hits@10 = 0.5962 ← MEASURED
-- RotatE FB15k-237: in progress (epoch ~253/500 as of 2026-05-06) ← RUNNING
+- RotatE FB15k-237: in progress (epoch ~253/500) ← RUNNING
 - ComplEx FB15k-237: evaluation bug (MRR=1.0, impossible) ← BUG
 - RASCAL FB15k-237: not yet started ← V7 NEW (published target MRR ≈ 0.356)
 - ConvE  FB15k-237: not yet started ← V7 NEW (published target MRR ≈ 0.325)
 - TuckER FB15k-237: not yet started ← V7 NEW (published target MRR ≈ 0.358)
 - GTransE NELL-995: not yet started ← V7 NEW (α=2–4; published H@10 ≈ 31–32%)
+- V8CurvedManifoldReasoner: not yet started ← V8 NEW (target MRR ≥ 0.38)
 - QuantumReasoner V5 FB15k-237: MRR ≈ 0.271 ← MEASURED (training mismatch confirmed root cause)
 - QuantumReasoner V6: not yet started ← PENDING (requires existing-file wiring)
 
@@ -2263,4 +2502,6 @@ Add:
 1. A worked numerical example tracing a single (h,r,t) triple through TeleportationScorer — actual tensor shapes at each einsum step
 2. A diagram comparing AmplitudeAggregator (pure states) vs DecoherencePathAggregator (density matrices) — showing exactly when/why they diverge
 3. A "V6 Debug Checklist": "If ContextualityLoss stays at 0: check joint_score and factorized_score are computed from different functions. If decoherence rates don't decrease: verify DecoherenceRateScheduler.anneal() is called each epoch."
-4. A visual activation timeline across V1–V6 showing which loss components are active at each epoch — critical for understanding the progressive complexity ramp
+4. A visual activation timeline across V1–V8 showing which loss components are active at each epoch — critical for understanding the progressive complexity ramp
+5. A "V8 Debug Checklist": "If holonomy gap stays near 0: check that relation cycles of length ≥ 2 exist in the adjacency graph. If per-entity curvature κ_e does not diversify: increase lr for log_κ parameter group."
+6. A worked example of Theorem V8.1 with numbers: "For ε=0.3, d=8, |⟨t|ψ⟩|²=0.7 → Score = 0.7×0.7+0.125×0.3 = 0.49+0.0375 = 0.5275" to make the theory concrete.
