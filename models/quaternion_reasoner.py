@@ -410,8 +410,10 @@ class QuaternionReasoner(nn.Module):
 
         Use this to generate paper Figure 1/2 equivalents for V4.
         """
-        from .components import quaternion_inner_product
+        import sys
         import math
+        from pathlib import Path
+        from .components import quaternion_inner_product
 
         self.eval()
 

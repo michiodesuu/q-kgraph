@@ -435,9 +435,8 @@ def main() -> int:
     health_data = {
         "final_summary":    monitor.final_summary(),
         "training_history": [
-            {k: float(v) if isinstance(v, (int, float)) else v for k, v in h.items()}
-            for h in vars(monitor)["_reports"]
-            if hasattr(monitor, "_reports")
+            {k: float(v) if isinstance(v, (int, float)) else v for k, v in vars(h).items()}
+            for h in vars(monitor).get("_reports", [])
         ] if hasattr(monitor, "_reports") else [],
         "param_count": v4_model.get_param_count(),
         "training_time_min": v4_time / 60,

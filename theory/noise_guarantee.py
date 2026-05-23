@@ -245,9 +245,15 @@ def verify_theorem_conditions(
             corr_id  = toy_kg.entity2id[cq["correct_tail"]]
             wrong_id = toy_kg.entity2id[cq["contradictory_tail"]]
 
-            h_state     = model.encoder(torch.tensor([h_id],    device=device)).squeeze(0)
-            corr_state  = model.encoder(torch.tensor([corr_id], device=device)).squeeze(0)
-            wrong_state = model.encoder(torch.tensor([wrong_id],device=device)).squeeze(0)
+            def _encode(idx):
+                out = model.encoder(torch.tensor([idx], device=device))
+                if isinstance(out, tuple):
+                    return tuple(x.squeeze(0) for x in out)
+                return out.squeeze(0)
+
+            h_state     = _encode(h_id)
+            corr_state  = _encode(corr_id)
+            wrong_state = _encode(wrong_id)
 
             corr_paths  = enumerator.find_paths(h_id, corr_id)
             wrong_paths = enumerator.find_paths(h_id, wrong_id)

@@ -460,7 +460,7 @@ class HardwareValidationReport:
         """Save Table 4 to CSV."""
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", newline="") as f:
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=list(metrics[0].keys()))
             writer.writeheader()
             writer.writerows(metrics)
