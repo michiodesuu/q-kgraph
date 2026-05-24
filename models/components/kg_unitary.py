@@ -523,21 +523,19 @@ def infer_relation_structure(
         ...     inverse_pairs=structure['inverse_pairs'],
         ... )
     """
-    # Build lookup: (h, r) -> set of tails
-    ht_to_tails:  dict[tuple, set] = {}
-    # And (r, h) -> set of tails for inverse detection
-    rt_to_heads:  dict[tuple, set] = {}
+    # Build all lookups in a single pass — O(T)
+    ht_to_tails: dict[tuple, set] = {}   # (h, r) -> {t}
+    rt_to_heads: dict[tuple, set] = {}   # (r, t) -> {h}
+    rel_to_pairs: dict[int, list] = {}   # r -> [(h, t)]  ← avoids re-scanning per relation
 
     for h, r, t in triple_set:
         ht_to_tails.setdefault((h, r), set()).add(t)
         rt_to_heads.setdefault((r, t), set()).add(h)
+        rel_to_pairs.setdefault(r, []).append((h, t))
 
-    # Detect symmetric relations
+    # Detect symmetric relations — O(T) total
     symmetric_rels: set[int] = set()
-    for r in range(num_relations):
-        forward_triples = [(h, t) for (h, rel, t) in triple_set if rel == r]
-        if not forward_triples:
-            continue
+    for r, forward_triples in rel_to_pairs.items():
         sym_count = sum(
             1 for (h, t) in forward_triples
             if t in rt_to_heads.get((r, h), set())
@@ -545,16 +543,15 @@ def infer_relation_structure(
         if sym_count / len(forward_triples) >= symmetry_threshold:
             symmetric_rels.add(r)
 
-    # Detect inverse pairs
+    # Detect inverse pairs — O(R² + T) instead of O(R² × T)
     inverse_pairs: list[tuple[int, int]] = []
     checked_pairs: set[tuple] = set()
 
-    for r1 in range(num_relations):
-        for r2 in range(r1 + 1, num_relations):
-            if (r1, r2) in checked_pairs:
-                continue
-            forward_r1 = [(h, t) for (h, rel, t) in triple_set if rel == r1]
-            if not forward_r1:
+    for r1, forward_r1 in rel_to_pairs.items():
+        if not forward_r1:
+            continue
+        for r2 in range(num_relations):
+            if r2 <= r1 or (r1, r2) in checked_pairs:
                 continue
             inv_count = sum(
                 1 for (h, t) in forward_r1
