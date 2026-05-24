@@ -213,17 +213,17 @@ def train_and_evaluate(
 
     train_loader = DataLoader(
         splits["train"], batch_size=args.batch_size,
-        shuffle=True, num_workers=2, pin_memory=True,
+        shuffle=True, num_workers=(0 if __import__("sys").platform == "win32" else 2), pin_memory=(__import__("sys").platform != "win32"),
         collate_fn=collate_fn,
     )
     val_loader = DataLoader(
         splits["val"], batch_size=64,
-        shuffle=False, num_workers=2,
+        shuffle=False, num_workers=(0 if __import__("sys").platform == "win32" else 2),
         collate_fn=collate_fn,
     )
     test_loader = DataLoader(
         splits["test"], batch_size=64,
-        shuffle=False, num_workers=2,
+        shuffle=False, num_workers=(0 if __import__("sys").platform == "win32" else 2),
         collate_fn=collate_fn,
     )
 

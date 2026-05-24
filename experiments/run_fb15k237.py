@@ -43,13 +43,18 @@ import csv
 import time
 import argparse
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from tqdm import tqdm
 
 from data.download import download_dataset, load_entity_relation_maps
 from data.dataset import KGDataset, build_dataloaders
@@ -63,6 +68,10 @@ from models.baselines.complex_e import ComplEx
 from training.trainer import Trainer
 from training.trainer_v2 import TrainerV2
 from training.losses import build_loss
+from training.interference_loss import InterferenceAwareLoss
+from training.novel_loss import CombinedNovelLoss
+from models.components.quantum_teleportation import TeleportationScorer
+from models.components.decoherence import DecoherenceChannel, DecoherenceRateScheduler
 from evaluation.metrics import RankingMetrics
 from evaluation.chunked_evaluator import ChunkedEvaluator
 from evaluation.ablation import AblationRunner, STANDARD_ABLATIONS, NOISE_LEVELS
@@ -261,12 +270,13 @@ def train_model(
     log.print_banner(f"Training {name}", color="yellow")
 
     from torch.utils.data import DataLoader
+    _nw = 0 if sys.platform == "win32" else 2
     train_loader = DataLoader(splits["train"], batch_size=args.batch_size,
-                              shuffle=True,  num_workers=2, pin_memory=True)
+                              shuffle=True,  num_workers=_nw, pin_memory=(_nw > 0))
     val_loader   = DataLoader(splits["val"],   batch_size=args.batch_size,
-                              shuffle=False, num_workers=2)
+                              shuffle=False, num_workers=_nw)
     test_loader  = DataLoader(splits["test"],  batch_size=args.batch_size,
-                              shuffle=False, num_workers=2)
+                              shuffle=False, num_workers=_nw)
 
     loss_type, loss_kwargs = get_loss_config(name)
     run_name = f"fb15k237_{name}"
@@ -374,12 +384,13 @@ def phase4_noise_experiment(
     log.print_banner("Phase 4 — Noise Robustness Experiment", color="yellow")
 
     from torch.utils.data import DataLoader
+    _nw = 0 if sys.platform == "win32" else 2
     train_loader = DataLoader(splits["train"], batch_size=args.batch_size,
-                              shuffle=True, num_workers=2)
+                              shuffle=True, num_workers=_nw)
     val_loader   = DataLoader(splits["val"],   batch_size=args.batch_size,
-                              shuffle=False, num_workers=2)
+                              shuffle=False, num_workers=_nw)
     test_loader  = DataLoader(splits["test"],  batch_size=args.batch_size,
-                              shuffle=False, num_workers=2)
+                              shuffle=False, num_workers=_nw)
 
     # AblationRunner handles the 4 conditions
     ablation_runner = AblationRunner(
@@ -513,11 +524,381 @@ def save_main_results_table(all_results: list):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  NOVEL V6 COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_yaml_config(config_path: str, args: argparse.Namespace) -> argparse.Namespace:
+    """
+    Load a YAML config file and merge it into args.
+    Top-level scalar keys override matching argparse fields.
+    The full YAML dict is attached as args.novel_cfg for downstream use.
+    """
+    try:
+        import yaml
+    except ImportError:
+        console.print("[red]PyYAML required: pip install pyyaml[/]")
+        raise SystemExit(1)
+
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f)
+
+    # Drop Hydra-style keys
+    cfg.pop("defaults", None)
+    cfg.pop("ablation_flags", None)
+
+    # Map YAML keys → argparse field names
+    _yaml_to_arg = {
+        "embed_dim":   "embed_dim",
+        "epochs":      "epochs",
+        "max_hops":    "max_hops",
+        "max_paths":   "max_paths",
+        "batch_size":  "batch_size",
+        "lr_base":     "lr",
+    }
+    for yaml_key, arg_key in _yaml_to_arg.items():
+        if yaml_key in cfg:
+            setattr(args, arg_key, cfg[yaml_key])
+
+    args.novel_cfg = argparse.Namespace(**cfg)
+    log.info(f"Loaded novel config from {config_path} (model_variant={cfg.get('model_variant','?')})")
+    return args
+
+
+class NovelQuantumWrapper(nn.Module):
+    """
+    Wraps QuantumReasoner + TeleportationScorer for V6 blended scoring.
+
+    score_triple()       = (1-w)*base_score + w*teleport_score
+    score_triple_vs_all() = base only (evaluation efficiency)
+
+    w is linearly ramped from 0 → teleportation_weight over teleport_blend_warmup epochs
+    via set_epoch().
+    """
+
+    def __init__(
+        self,
+        base_model: QuantumReasoner,
+        novel_cfg: argparse.Namespace,
+        n_rel: int,
+    ) -> None:
+        super().__init__()
+        self.base = base_model
+        self.novel_cfg = novel_cfg
+        self._teleport_weight: float = 0.0
+
+        complex_dim   = base_model.complex_dim
+        n_corrections = min(complex_dim ** 2, getattr(novel_cfg, "n_corrections", 16))
+        hidden_dim    = getattr(novel_cfg, "bell_hidden_dim", 64)
+
+        self.teleport_scorer = TeleportationScorer(
+            complex_dim   = complex_dim,
+            num_relations = n_rel,
+            n_corrections = n_corrections,
+            hidden_dim    = hidden_dim,
+        )
+
+    def set_epoch(self, epoch: int) -> None:
+        """Update teleportation blend weight for the current epoch."""
+        warmup = max(getattr(self.novel_cfg, "teleport_blend_warmup", 20), 1)
+        max_w  = getattr(self.novel_cfg, "teleportation_weight", 0.5)
+        self._teleport_weight = min(1.0, epoch / warmup) * max_w
+
+    def score_triple(
+        self,
+        head_ids:     torch.Tensor,
+        relation_ids: torch.Tensor,
+        tail_ids:     torch.Tensor,
+    ) -> torch.Tensor:
+        base_score = self.base.score_triple(head_ids, relation_ids, tail_ids)
+        if self._teleport_weight < 1e-7:
+            return base_score
+        h_states  = self.base.encoder(head_ids)
+        t_states  = self.base.encoder(tail_ids)
+        tp_score  = self.teleport_scorer.score_triple(h_states, relation_ids, t_states)
+        return (1.0 - self._teleport_weight) * base_score + self._teleport_weight * tp_score
+
+    def score_triple_vs_all(
+        self,
+        head_ids:     torch.Tensor,
+        relation_ids: torch.Tensor,
+    ) -> torch.Tensor:
+        return self.base.score_triple_vs_all(head_ids, relation_ids)
+
+    def __getattr__(self, name: str):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self._modules["base"], name)
+
+
+def build_novel_model(
+    n_ent: int,
+    n_rel: int,
+    args:      argparse.Namespace,
+    structure: dict,
+    novel_cfg: argparse.Namespace,
+) -> NovelQuantumWrapper:
+    """Construct V6 NovelQuantumWrapper from config."""
+    base = build_model("quantum_reasoner", n_ent, n_rel, args, structure)
+    return NovelQuantumWrapper(base, novel_cfg, n_rel)
+
+
+def train_novel_model(
+    model:      NovelQuantumWrapper,
+    splits:     dict,
+    true_tails: dict,
+    args:       argparse.Namespace,
+    novel_cfg:  argparse.Namespace,
+    n_ent:      int,
+    device:     torch.device,
+) -> dict:
+    """
+    Custom training loop for the V6 novel quantum model.
+
+    Combines:
+      - InterferenceAwareLoss  (BCE + phase separation + regularization)
+      - CombinedNovelLoss      (ranking, teleport contrast, entropy reg, decoherence)
+      - DecoherenceRateScheduler (optional per-relation ε annealing)
+      - Teleportation blend warmup (w: 0 → teleportation_weight over warmup epochs)
+    """
+    model = model.to(device)
+
+    _nw = 0 if sys.platform == "win32" else 2
+    train_loader = DataLoader(splits["train"], batch_size=args.batch_size,
+                              shuffle=True,  num_workers=_nw, pin_memory=(_nw > 0))
+    val_loader   = DataLoader(splits["val"],   batch_size=args.batch_size,
+                              shuffle=False, num_workers=_nw)
+    test_loader  = DataLoader(splits["test"],  batch_size=args.batch_size,
+                              shuffle=False, num_workers=_nw)
+
+    # ── Loss functions ─────────────────────────────────────────────────────────
+    base_loss_fn = InterferenceAwareLoss(
+        label_smoothing    = 0.9,
+        phase_weight       = getattr(novel_cfg, "phase_weight",         0.1),
+        contrast_weight    = getattr(novel_cfg, "contrast_weight",       0.5),
+        reg_encoder_weight = getattr(novel_cfg, "reg_encoder_weight",   0.01),
+        reg_unitary_weight = getattr(novel_cfg, "reg_unitary_weight",   0.01),
+    )
+
+    complex_dim = model.base.complex_dim
+    n_rel       = model.base.num_relations
+    novel_loss_fn = CombinedNovelLoss(
+        complex_dim              = complex_dim,
+        num_relations            = n_rel,
+        ranking_weight           = getattr(novel_cfg, "ranking_loss_weight",       0.3),
+        teleport_contrast_weight = getattr(novel_cfg, "teleport_contrast_weight",  0.5),
+        entropy_reg_weight       = getattr(novel_cfg, "entropy_reg_weight",        0.01),
+        contextuality_weight     = getattr(novel_cfg, "contextuality_weight",      0.1),
+        decoherence_weight       = getattr(novel_cfg, "decoherence_loss_weight",   0.05),
+        ranking_temperature      = getattr(novel_cfg, "ranking_temperature",       1.0),
+        teleport_margin          = getattr(novel_cfg, "teleport_contrast_margin",  0.1),
+        contextuality_margin     = getattr(novel_cfg, "contextuality_margin",      0.05),
+    ).to(device)
+
+    # ── Decoherence rate scheduler (optional) ─────────────────────────────────
+    dc_channel         = None
+    decohere_scheduler = None
+    if getattr(novel_cfg, "use_decoherence", False):
+        dc_channel = DecoherenceChannel(
+            complex_dim     = complex_dim,
+            num_relations   = n_rel,
+            learnable_rates = getattr(novel_cfg, "learnable_decoherence_rates", True),
+            init_rate       = getattr(novel_cfg, "decoherence_rate_init", 0.3),
+        ).to(device)
+        decohere_scheduler = DecoherenceRateScheduler(
+            channel       = dc_channel,
+            init_rate     = getattr(novel_cfg, "decoherence_rate_init",    0.3),
+            final_rate    = getattr(novel_cfg, "decoherence_rate_final",   0.01),
+            anneal_epochs = getattr(novel_cfg, "decoherence_anneal_epochs", 100),
+            schedule      = getattr(novel_cfg, "decoherence_anneal_schedule", "exponential"),
+        )
+
+    # ── Optimizer with per-component learning rates ────────────────────────────
+    lr_base   = args.lr
+    lr_imag   = lr_base * getattr(novel_cfg, "lr_imag_mult",          3.0)
+    lr_phase  = lr_base * getattr(novel_cfg, "lr_phase_mult",         2.0)
+    lr_bell   = lr_base * getattr(novel_cfg, "lr_bell_state_mult",    0.5)
+    lr_dcoh   = lr_base * getattr(novel_cfg, "lr_decoherence_mult",   0.1)
+    wd        = getattr(novel_cfg, "weight_decay", 1e-5)
+    grad_clip = getattr(novel_cfg, "grad_clip", 0.5)
+
+    base = model.base
+    param_groups = [
+        {"name": "real",   "params": list(base.encoder.real_embeddings.parameters()), "lr": lr_base,  "weight_decay": wd},
+        {"name": "imag",   "params": list(base.encoder.imag_embeddings.parameters()), "lr": lr_imag,  "weight_decay": 0.0},
+        {"name": "phases", "params": list(base.unitary.parameters()),                  "lr": lr_phase, "weight_decay": 0.0},
+        {"name": "agg",    "params": list(base.aggregator.parameters()),                "lr": lr_base,  "weight_decay": wd},
+        {"name": "bias",   "params": [base.relation_bias],                              "lr": lr_base,  "weight_decay": 0.0},
+        {"name": "bell",   "params": list(model.teleport_scorer.parameters()),          "lr": lr_bell,  "weight_decay": wd},
+        {"name": "novel",  "params": list(novel_loss_fn.parameters()),                  "lr": lr_base,  "weight_decay": wd},
+    ]
+    if dc_channel is not None:
+        param_groups.append({"name": "dcoh", "params": list(dc_channel.parameters()), "lr": lr_dcoh, "weight_decay": 0.0})
+
+    optimizer = torch.optim.Adam(param_groups)
+    warmup_ep = getattr(novel_cfg, "warmup_epochs", 30)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer,
+        T_0     = max((args.epochs - warmup_ep) // 4, 50),
+        T_mult  = 1,
+        eta_min = lr_base * 0.01,
+    )
+
+    run_name   = getattr(novel_cfg, "run_name", "fb15k237_quantum_novel")
+    ckpt       = CheckpointManager(str(CKPT_DIR / run_name), keep_last_n=3,
+                                   metric_name="MRR", higher_is_better=True)
+    novel_log  = RichLogger(run_name,
+                            log_file=Path("outputs/logs") / f"{run_name}_train.log")
+    val_metrics = RankingMetrics(filter_false_negatives=True)
+
+    log.print_banner("Training V6 Novel Quantum Model", color="magenta")
+    log.info(f"  lr_base={lr_base}  lr_imag={lr_imag:.5f}  lr_phase={lr_phase:.5f}")
+    log.info(f"  lr_bell={lr_bell:.5f}  grad_clip={grad_clip}")
+    log.info(f"  teleport_weight_target={getattr(novel_cfg,'teleportation_weight',0.5)}")
+    log.info(f"  teleport_blend_warmup={getattr(novel_cfg,'teleport_blend_warmup',20)} epochs")
+    log.info(f"  decoherence={getattr(novel_cfg,'use_decoherence',False)}")
+
+    use_ranking   = getattr(novel_cfg, "use_ranking_loss",       True)
+    use_entropy   = getattr(novel_cfg, "use_entropy_reg",        True)
+    use_tp_contrast = getattr(novel_cfg, "use_teleport_contrast", True)
+    use_dc_loss   = getattr(novel_cfg, "use_decoherence_loss",   True) and dc_channel is not None
+
+    # ── Training loop ──────────────────────────────────────────────────────────
+    best_mrr        = 0.0
+    best_results    = None
+    epochs_no_impr  = 0
+    patience        = args.patience
+
+    for epoch in range(1, args.epochs + 1):
+        model.set_epoch(epoch)
+        model.train()
+        t0          = time.time()
+        total_loss  = 0.0
+        n_batches   = 0
+
+        for batch in tqdm(train_loader, desc=f"Epoch {epoch:4d} [train]", leave=False):
+            positive  = batch["positive"].to(device)   # (B, 3)
+            negatives = batch["negatives"].to(device)  # (B, K, 3)
+            B, K, _   = negatives.shape
+
+            h_pos = positive[:, 0]; r_pos = positive[:, 1]; t_pos = positive[:, 2]
+            h_neg = negatives[:, :, 0].reshape(B * K)
+            r_neg = negatives[:, :, 1].reshape(B * K)
+            t_neg = negatives[:, :, 2].reshape(B * K)
+
+            optimizer.zero_grad()
+
+            # Positives: full blended score (base + teleportation)
+            pos_scores = model.score_triple(h_pos, r_pos, t_pos)              # (B,)
+            # Negatives: base model only — the negative batch is B*K samples which
+            # makes the teleportation einsum (B*K, corrections, d, d) → OOM on GPU.
+            # The teleportation contrastive loss handles pos/neg teleport scoring
+            # separately at the positive batch size B, which is memory-safe.
+            neg_scores = model.base.score_triple(h_neg, r_neg, t_neg).view(B, K)  # (B, K)
+
+            loss = base_loss_fn.forward_main(pos_scores, neg_scores)
+            loss = loss + base_loss_fn.regularization(base.encoder, base.unitary)
+
+            if use_ranking:
+                loss = loss + novel_loss_fn.forward_ranking(pos_scores, neg_scores)
+
+            if use_entropy:
+                loss = loss + novel_loss_fn.forward_entropy_reg(
+                    model.teleport_scorer.bell_states
+                )
+
+            if model._teleport_weight > 0.01 and use_tp_contrast:
+                h_st  = base.encoder(h_pos)
+                t_st  = base.encoder(t_pos)
+                tn_st = base.encoder(t_neg[:B])   # hardest negative (first)
+                pos_tp = model.teleport_scorer.score_triple(h_st, r_pos, t_st)
+                neg_tp = model.teleport_scorer.score_triple(h_st, r_pos, tn_st)
+                loss = loss + novel_loss_fn.forward_teleportation_contrast(pos_tp, neg_tp)
+
+            if use_dc_loss:
+                loss = loss + novel_loss_fn.forward_decoherence(dc_channel)
+
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            optimizer.step()
+
+            total_loss += loss.item()
+            n_batches  += 1
+
+        if decohere_scheduler is not None:
+            decohere_scheduler.anneal(epoch)
+        scheduler.step()
+
+        # ── Validation ────────────────────────────────────────────────────────
+        model.eval()
+        val_metrics.reset()
+        with torch.no_grad():
+            for batch in tqdm(val_loader, desc=f"Epoch {epoch:4d} [val]  ", leave=False):
+                positive = batch["positive"].to(device)
+                h, r, t  = positive[:, 0], positive[:, 1], positive[:, 2]
+                scores   = model.score_triple_vs_all(h, r)
+                val_metrics.update(scores=scores, true_indices=t,
+                                   head_ids=h, relation_ids=r, true_tails=true_tails)
+        val_results = val_metrics.compute()
+
+        epoch_time = time.time() - t0
+        mean_loss  = total_loss / max(n_batches, 1)
+        novel_log.info(
+            f"Epoch {epoch:4d} | loss={mean_loss:.4f} | {val_results} | "
+            f"tp_w={model._teleport_weight:.3f} | {epoch_time:.1f}s"
+        )
+
+        ckpt.save(model=model, optimizer=optimizer, epoch=epoch,
+                  metrics=val_results.to_dict(), scheduler=scheduler)
+
+        if val_results.mrr > best_mrr:
+            best_mrr       = val_results.mrr
+            best_results   = val_results
+            epochs_no_impr = 0
+        else:
+            epochs_no_impr += 1
+
+        if patience > 0 and epochs_no_impr >= patience:
+            novel_log.info(
+                f"Early stopping at epoch {epoch} "
+                f"({patience} epochs without MRR improvement)"
+            )
+            break
+
+    # ── Final test evaluation ──────────────────────────────────────────────────
+    ckpt.load_best(model, device=device)
+    test_m = RankingMetrics(filter_false_negatives=True)
+    model.eval()
+    with torch.no_grad():
+        for batch in tqdm(test_loader, desc="Test evaluation"):
+            positive = batch["positive"].to(device)
+            h, r, t  = positive[:, 0], positive[:, 1], positive[:, 2]
+            scores   = model.score_triple_vs_all(h, r)
+            test_m.update(scores=scores, true_indices=t,
+                          head_ids=h, relation_ids=r, true_tails=true_tails)
+    test_results = test_m.compute()
+    log.print_metrics(test_results.to_dict(), title="V6 Novel Model — Test Results")
+
+    return {
+        "model_name":  run_name,
+        "noise_rate":  0.0,
+        "mrr":         test_results.mrr,
+        "hits@1":      test_results.hits_at_1,
+        "hits@3":      test_results.hits_at_3,
+        "hits@10":     test_results.hits_at_10,
+        "num_triples": test_results.num_triples,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  MAIN
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Full FB15k-237 experimental run")
+    parser.add_argument("--config",          type=str,   default="",
+                        help="Path to YAML config (e.g. configs/quantum_novel.yaml). "
+                             "Enables V6 novel components and overrides matching defaults.")
     parser.add_argument("--embed_dim",       type=int,   default=256)
     parser.add_argument("--epochs",          type=int,   default=500)
     parser.add_argument("--lr",              type=float, default=0.0003)
@@ -542,6 +923,10 @@ def main():
     parser.add_argument("--noise_levels",    type=str, default="0.0,0.05,0.10,0.15,0.20",
                         help="Comma-separated noise levels")
     args = parser.parse_args()
+
+    # ── YAML config overlay ────────────────────────────────────────────────────
+    if args.config:
+        args = _load_yaml_config(args.config, args)
 
     if args.quick_mode:
         args.epochs      = 50
@@ -584,7 +969,20 @@ def main():
     histories   = {}
     quantum_model = None
 
+    novel_cfg = getattr(args, "novel_cfg", None)
+
     for model_name in models_to_run:
+        # V6 novel model: custom build + train path
+        if model_name == "quantum_reasoner" and novel_cfg is not None:
+            novel_model = build_novel_model(n_ent, n_rel, args, structure, novel_cfg)
+            result = train_novel_model(
+                novel_model, splits, true_tails, args, novel_cfg, n_ent, device
+            )
+            quantum_model = novel_model
+            if result:
+                all_results.append(result)
+            continue
+
         model = build_model(model_name, n_ent, n_rel, args, structure)
         if model is None:
             continue

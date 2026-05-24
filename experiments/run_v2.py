@@ -346,11 +346,11 @@ def main() -> int:
         )
 
         train_dl = DataLoader(train_ds, batch_size=1024, shuffle=True,
-                              collate_fn=collate_fn, num_workers=4, pin_memory=True)
+                              collate_fn=collate_fn, num_workers=(0 if __import__("sys").platform == "win32" else 2), pin_memory=(__import__("sys").platform != "win32"))
         val_dl   = DataLoader(val_ds,   batch_size=256,  shuffle=False,
-                              collate_fn=collate_fn, num_workers=4)
+                              collate_fn=collate_fn, num_workers=(0 if __import__("sys").platform == "win32" else 2))
         test_dl  = DataLoader(test_ds,  batch_size=256,  shuffle=False,
-                              collate_fn=collate_fn, num_workers=4)
+                              collate_fn=collate_fn, num_workers=(0 if __import__("sys").platform == "win32" else 2))
 
         true_tails = dict(train_ds.true_tails)
 

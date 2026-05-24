@@ -317,16 +317,26 @@ def train_and_evaluate(
     from torch.utils.data import DataLoader
 
     train_loader = DataLoader(splits["train"], batch_size=args.batch_size,
-                              shuffle=True,  num_workers=2, pin_memory=True)
+                              shuffle=True,  num_workers=(0 if __import__("sys").platform == "win32" else 2), pin_memory=(__import__("sys").platform != "win32"))
     val_loader   = DataLoader(splits["val"],   batch_size=args.batch_size,
-                              shuffle=False, num_workers=2)
+                              shuffle=False, num_workers=(0 if __import__("sys").platform == "win32" else 2))
     test_loader  = DataLoader(splits["test"],  batch_size=args.batch_size,
-                              shuffle=False, num_workers=2)
+                              shuffle=False, num_workers=(0 if __import__("sys").platform == "win32" else 2))
 
     run_name = f"wn18rr_{model_name}"
 
     # Use TrainerV2 for QuantumReasoner, Trainer for baselines
     if model_name == "quantum_reasoner":
+        chunk_size = args.chunk_size if args.chunk_size > 0 else "auto"
+        val_chunked_evaluator = ChunkedEvaluator(
+            model        = model,
+            num_entities = n_ent,
+            device       = device,
+            chunk_size   = chunk_size,
+            true_tails   = true_tails,
+            batch_size   = args.batch_size,
+            verbose      = False,
+        )
         trainer = TrainerV2(
             model              = model,
             train_loader       = train_loader,
@@ -351,6 +361,7 @@ def train_and_evaluate(
             true_tails         = true_tails,
             patience           = args.patience,
             resume_from        = resume_from or None,
+            chunked_evaluator  = val_chunked_evaluator,
         )
     else:
         loss_map = {

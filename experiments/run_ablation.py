@@ -176,7 +176,7 @@ def load_real_data(dataset: str, args) -> tuple:
     )
 
     train_dl = DataLoader(splits["train"], batch_size=args.batch_size,
-                          shuffle=True, num_workers=2)
+                          shuffle=True, num_workers=(0 if __import__("sys").platform == "win32" else 2))
     val_dl   = DataLoader(splits["val"],   batch_size=args.batch_size, shuffle=False)
     test_dl  = DataLoader(splits["test"],  batch_size=args.batch_size, shuffle=False)
 
