@@ -129,6 +129,7 @@ class TrainerV2:
         use_wandb:          bool  = False,
         patience:           int   = 50,
         resume_from:        Optional[str] = None,
+        chunked_evaluator   = None,   # ChunkedEvaluator instance (required for large KGs)
     ) -> None:
 
         self.model         = model.to(device)
@@ -142,8 +143,9 @@ class TrainerV2:
         self.use_wandb     = use_wandb
         self.contradiction_every = contradiction_every
 
-        self.train_loader = train_loader
-        self.val_loader   = val_loader
+        self.train_loader       = train_loader
+        self.val_loader         = val_loader
+        self.chunked_evaluator  = chunked_evaluator   # None → use score_triple_vs_all
 
         # ── Loss function ──────────────────────────────────────────────
         if use_interference_loss:
@@ -375,8 +377,12 @@ class TrainerV2:
 
     def _val_epoch(self, epoch: int) -> MetricResults:
         self.model.eval()
-        self.val_metrics.reset()
 
+        # Large KGs (e.g. WN18RR with 40k entities): use ChunkedEvaluator to avoid OOM
+        if self.chunked_evaluator is not None:
+            return self.chunked_evaluator.evaluate_loader(self.val_loader)
+
+        self.val_metrics.reset()
         with torch.no_grad():
             for batch in tqdm(
                 self.val_loader,
