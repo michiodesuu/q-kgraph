@@ -223,9 +223,6 @@ class ChunkedEvaluator:
         Returns:
             (B, num_entities) float score tensor.
         """
-        if hasattr(self.model, 'score_triple_vs_all'):
-            return self.model.score_triple_vs_all(head_ids, relation_ids)
-
         B = head_ids.shape[0]
         all_scores = torch.zeros(B, self.num_entities, device=self.device)
 
