@@ -6,7 +6,7 @@ __pycacahe__/
 *.so
 *.dylib
 *.egg-info/
-venv/
+.venv/
 
 outputs/
 output-*.log
